@@ -1,147 +1,126 @@
-# SmartFix AI — Intelligent Windows Error Diagnosis and Troubleshooting System
+# 🛡 SmartFix AI — Intelligent Windows Error Monitor & Auto-Repair
 
-> **B.Tech Computer Engineering Major Project**  
-> **Aldel Education Trust's St. John College of Engineering and Management, Palghar**
+> **Autonomous Windows error detection, diagnosis, and repair — powered by Llama 3 AI**
 
-SmartFix AI is an AI-assisted Windows troubleshooting and repair desktop application that helps users diagnose and resolve common Windows and application software errors safely.
-
----
-
-## Key Features
-
-- **Automated Diagnostic Collectors**: Gathers real-time telemetry from CPU, RAM, Disk, 12+ Windows Services, Event Viewer (Application & System error/warning logs), top processes, network adapters, and DNS resolvers.
-- **Deterministic Heuristic Rule Engine**: Immediate matching of known critical Windows failure patterns (Stopped services, DNS resolution failure, excessive RAM/CPU leaks, application crashes).
-- **Local AI Reasoning with Ollama**: Integrates local open-weight instruct models (e.g. Qwen 2.5 / 3 8B) for natural language reasoning without requiring cloud API keys.
-- **Strict Security Guardrails**: The LLM is restricted to choosing from an allowlisted **Repair Registry** of predefined PowerShell scripts. It can never generate or execute arbitrary unvalidated shell commands.
-- **Explicit User Approval Gate**: Every repair requires explicit user confirmation displaying the detected problem, root cause, confidence score, risk rating, and administrator privilege status.
-- **Post-Repair Verification Engine**: Automatically tests service health, DNS sockets, or process statuses to confirm whether the fix succeeded.
-- **Audit & Resolution History**: Full historical record of diagnostic sessions, user approvals, execution outputs, and verification results stored locally in SQLite (`smartfix.db`).
-- **Viva Demo Playground**: 1-click test fault injection to easily demonstrate full-loop problem detection and recovery during project evaluations.
+SmartFix AI runs silently in the background, monitors your Windows system for 150+ known errors, and offers one-click automated repairs. For unknown errors, it uses a local AI model (Llama 3 via Ollama) to generate and execute a custom PowerShell fix — which is then saved and reused forever.
 
 ---
 
-## Tech Stack
+## ✨ Features
 
-| Layer | Technologies |
+| Feature | Description |
 |---|---|
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS / Fluent Glassmorphism UI, Lucide Icons, Electron |
-| **Backend** | Python 3.10+, FastAPI, Uvicorn, Pydantic v2 |
-| **Telemetry** | `psutil`, `pywin32`, Windows Management Instrumentation (WMI), PowerShell 7 / Windows PowerShell |
-| **AI / LLM** | Ollama (`qwen2.5:latest` / `qwen3:8b`), local JSON schema formatting, offline heuristic fallback |
-| **Database** | SQLite 3 via SQLAlchemy async (`aiosqlite`) |
+| 🔍 **Real-time Monitoring** | Watches Windows services, Event Log, CPU/RAM/Disk metrics continuously |
+| ⚡ **150+ Hardcoded Errors** | Covers Windows Update, Network, Security, Storage, Applications, and more |
+| 🤖 **AI Diagnosis** | Uses Llama 3 (local, private) to diagnose and fix unknown errors |
+| 🧠 **Self-Learning** | AI-generated fixes are saved and reused on future occurrences |
+| 🔔 **Smart Notifications** | CRITICAL errors trigger a clean toast popup — no spam |
+| 🛠 **One-Click Repair** | PowerShell repair engine fixes errors automatically with admin rights |
+| 📊 **System Dashboard** | Live CPU, RAM, Disk, Network, and service health overview |
+| 🌐 **Network Diagnostics** | Full network connectivity and DNS resolution tests |
+| 📄 **System Report** | Generates a detailed HTML system health report |
+| 🎭 **Demo Mode** | Simulate real Windows errors to see SmartFix in action |
 
 ---
 
-## Quickstart Guide
+## 🚀 Quick Install (End Users)
 
-### Prerequisites
-1. **Python 3.10+**: Ensure `python` and `pip` are installed and added to your `PATH`.
-2. **Node.js 18+**: Ensure `node` and `npm` are installed.
-3. **Ollama (Optional for AI reasoning)**: Download and run [Ollama](https://ollama.ai) with `ollama run qwen2.5:latest`. If Ollama is not running, SmartFix operates in deterministic offline Rule Engine mode.
+1. Download **`SmartFix_Setup.exe`** from [Releases](https://github.com/RishiVartak6/SmartFix-AI/releases)
+2. Double-click and follow the installer wizard
+3. The installer automatically downloads and sets up:
+   - Python 3.11
+   - All required libraries (PyQt6, psutil, httpx)
+   - Ollama AI engine
+   - Llama 3 model (~4.7 GB — requires internet during setup)
+4. SmartFix AI launches automatically and runs in the system tray
+
+> **Requirements:** Windows 10/11 (64-bit) · Internet during install · 8 GB RAM recommended
 
 ---
 
-### Installation & Launch
+## 🛠 Developer Setup
 
-#### Option A: Automated PowerShell Setup (Recommended)
-Open PowerShell in the project directory and run:
-```powershell
-.\scripts\setup.ps1
+```bash
+# Clone the repository
+git clone https://github.com/RishiVartak6/SmartFix-AI.git
+cd SmartFix-AI
+
+# Install dependencies
+pip install PyQt6 psutil httpx pywin32
+
+# Run as Administrator (required for service monitoring)
+python smartfix_app.py
 ```
 
-#### Option B: Manual Setup
-
-1. **Install Python dependencies:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-2. **Start the FastAPI Backend:**
-   ```powershell
-   python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-   ```
-
-3. **Install & Start Frontend:**
-   ```powershell
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   Open your browser at `http://localhost:5173`.
-
----
-
-## Running Unit & Integration Tests
-
-Run the comprehensive pytest test suite covering collectors, rule engines, repair security allowlists, and FastAPI endpoints:
-```powershell
-python -m pytest tests/ -v
+### AI Features (Optional)
+```bash
+# Install Ollama from https://ollama.com
+ollama pull llama3
+ollama serve
 ```
 
 ---
 
-## Project Structure
+## 🏗 Project Structure
 
 ```
-SmartFix/
-├── backend/
-│   ├── main.py                     # FastAPI application entrypoint
-│   ├── config.py                   # Pydantic settings & configuration
-│   ├── api/                        # REST API routers
-│   │   ├── system.py               # Telemetry & health endpoints
-│   │   ├── diagnosis.py            # AI & rule diagnosis pipeline
-│   │   ├── repairs.py              # Repair catalog & approval/execution
-│   │   ├── history.py              # SQLite audit trail endpoints
-│   │   ├── settings.py             # Ollama configuration
-│   │   └── demo.py                 # Viva demonstration fault simulator
-│   ├── collectors/                 # Windows diagnostic collectors
-│   │   ├── system.py               # Hardware & OS telemetry
-│   │   ├── events.py               # Windows Event Logs
-│   │   ├── services.py             # Windows Service inspector
-│   │   ├── processes.py            # Top CPU/RAM consumers
-│   │   ├── network.py              # DNS & adapter status
-│   │   ├── application.py          # App crashes & WER
-│   │   └── drivers.py              # Device driver status
-│   ├── diagnosis/                  # Reasoning & schema engine
-│   │   ├── schemas.py              # Pydantic JSON schemas
-│   │   ├── rule_engine.py          # Deterministic heuristic rules
-│   │   ├── prompts.py              # System prompt & guardrails
-│   │   └── llm_engine.py           # Ollama client & offline fallback
-│   ├── repairs/                    # Validated Repair Registry
-│   │   ├── registry.py             # 13 allowlisted safe repair scripts
-│   │   ├── executor.py             # Sandboxed execution & timeout
-│   │   └── verification.py         # Post-repair validation handlers
-│   └── database/                   # SQLite persistence layer
-│       ├── database.py             # Async SQLAlchemy engine
-│       └── models.py               # Session, Diagnosis, Repair models
-├── frontend/                       # Desktop UI
-│   ├── src/
-│   │   ├── components/             # Sidebar, Header, ApprovalModal, ExecutionModal
-│   │   ├── pages/                  # Dashboard, Diagnose, Health, Repairs, History, Demo, Settings
-│   │   ├── services/api.ts         # Backend API client
-│   │   ├── types/index.ts          # TypeScript interfaces
-│   │   ├── App.tsx                 # Main layout
-│   │   └── index.css               # Fluent Glassmorphism Tailwind styling
-│   └── electron/main.cjs           # Electron desktop wrapper
-├── tests/                          # Automated Pytest suite
-│   ├── test_collectors.py
-│   ├── test_rules.py
-│   ├── test_repairs.py
-│   └── test_api.py
-├── scripts/
-│   └── setup.ps1                   # 1-click Windows setup script
-├── docs/
-│   └── architecture.md             # In-depth architectural design
-├── .env.example
-├── requirements.txt
-└── README.md
+SmartFix-AI/
+├── smartfix_app.py          ← Main application (PyQt6 UI + system tray)
+├── SmartFix AI.exe          ← C# launcher (production entry point)
+├── monitor/
+│   ├── monitor.py           ← Background monitoring threads
+│   ├── error_catalog.py     ← 150+ Windows error definitions
+│   ├── repair_engine.py     ← PowerShell repair executor
+│   ├── repair_advanced.py   ← Advanced repair strategies
+│   ├── difficult_errors.py  ← Complex error patterns
+│   ├── ai_dialog.py         ← AI Diagnosis dialog
+│   ├── llm_assistant.py     ← Ollama/Llama 3 interface
+│   ├── learned_repairs.py   ← AI self-learning persistence
+│   ├── demo_mode.py         ← Demo scenario engine
+│   ├── demo_window.py       ← Demo UI window
+│   ├── history.py           ← Repair history database
+│   ├── network_diag.py      ← Network diagnostics
+│   └── system_report.py     ← HTML report generator
+├── BUILD_INSTALLER.bat      ← Rebuild SmartFix_Setup.exe
+├── SmartFix_Installer.iss   ← Inno Setup installer script
+└── install_helper.ps1       ← Silent dependency installer
 ```
 
 ---
 
-## Authors & Project Details
-- **Project**: SmartFix AI — Intelligent Windows Troubleshooting System
-- **College**: St. John College of Engineering and Management, Palghar
-- **Department**: Department of Computer Engineering
-- **Team**: Chirag Patil, Neel Pawaskar, Rishi Vartak
-- **Project Guide**: Priyanka Kamble
+## 🔐 How It Works
+
+```
+Windows error occurs
+        ↓
+BackgroundMonitor detects it (services / Event Log / metrics)
+        ↓
+Alert shown in dashboard + CRITICAL popup notification
+        ↓
+User clicks "Fix Now"
+        ↓
+Known error → PowerShell repair script executes
+Unknown error → Llama 3 AI diagnoses → generates fix → executes → saved for future
+```
+
+---
+
+## 📦 Building the Installer
+
+```bash
+# Requires Inno Setup 6 (auto-installed if missing)
+BUILD_INSTALLER.bat
+# Output: dist\installer\SmartFix_Setup.exe
+```
+
+---
+
+## 🎓 Academic Project
+
+Developed as a **B.E. Final Year Major Project** — Autonomous Windows System Repair using Local LLM.
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
