@@ -50,70 +50,72 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("smartfix.app")
 
 
-BG_MAIN     = "#0B0D14"
-BG_SIDEBAR  = "#060810"
-BG_CARD     = "#111320"
-BG_CARD2    = "#181B2A"
-BORDER      = "#252838"
-ACCENT      = "#6366F1"
-GREEN       = "#22C55E"
-RED         = "#EF4444"
-ORANGE      = "#F97316"
-YELLOW      = "#EAB308"
-TEXT1       = "#F1F5F9"
-TEXT2       = "#94A3B8"
-TEXT3       = "#64748B"
+BG_MAIN    = "#0E0F14"
+BG_SIDEBAR = "#09090D"
+BG_CARD    = "#13141A"
+BG_CARD2   = "#1A1B23"
+BORDER     = "#1E2030"
+BORDER2    = "#2A2D40"
+ACCENT     = "#5B6EF5"
+GREEN      = "#34D399"
+RED        = "#F87171"
+ORANGE     = "#FB923C"
+YELLOW     = "#FBBF24"
+TEXT1      = "#E8EAF0"
+TEXT2      = "#8B8FA8"
+TEXT3      = "#4A4D62"
 
-SEV_COLORS  = {"CRITICAL": RED, "HIGH": ORANGE, "MEDIUM": YELLOW, "LOW": ACCENT}
-SEV_ICONS   = {"CRITICAL": "●", "HIGH": "●", "MEDIUM": "●", "LOW": "●"}
+SEV_COLORS = {"CRITICAL": RED, "HIGH": ORANGE, "MEDIUM": YELLOW, "LOW": ACCENT}
+SEV_ICONS  = {"CRITICAL": "C", "HIGH": "H", "MEDIUM": "M", "LOW": "L"}
 
 STYLESHEET = f"""
 QWidget {{
     background-color: {BG_MAIN};
     color: {TEXT1};
-    font-family: 'Segoe UI Variable Display', 'Segoe UI', Inter, sans-serif;
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
     font-size: 13px;
 }}
 QScrollBar:vertical {{
     background: transparent;
-    width: 5px;
-    border-radius: 3px;
+    width: 4px;
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: {BORDER};
-    border-radius: 3px;
-    min-height: 30px;
+    background: {BORDER2};
+    border-radius: 2px;
+    min-height: 24px;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+QScrollBar:horizontal {{ height: 0; }}
 QTableWidget {{
     background: {BG_CARD};
     border: 1px solid {BORDER};
-    border-radius: 10px;
-    gridline-color: transparent;
+    border-radius: 6px;
+    gridline-color: {BORDER};
     outline: 0;
 }}
-QTableWidget::item {{ padding: 9px 16px; }}
-QTableWidget::item:selected {{ background: {ACCENT}1A; color: {TEXT1}; }}
+QTableWidget::item {{ padding: 8px 16px; border-bottom: 1px solid {BORDER}; }}
+QTableWidget::item:selected {{ background: {ACCENT}15; color: {TEXT1}; }}
 QHeaderView::section {{
     background: {BG_CARD};
     color: {TEXT3};
-    padding: 10px 16px;
+    padding: 8px 16px;
     border: none;
     border-bottom: 1px solid {BORDER};
     font-weight: 600;
     font-size: 10px;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
 }}
 QTextEdit {{
-    background: {BG_CARD2};
+    background: {BG_SIDEBAR};
     border: 1px solid {BORDER};
-    border-radius: 8px;
+    border-radius: 4px;
     padding: 10px 12px;
     color: {TEXT2};
     font-family: 'Cascadia Code', 'Consolas', monospace;
     font-size: 11px;
+    line-height: 1.5;
 }}
 """
 
@@ -151,49 +153,45 @@ class AlertBridge(QThread):
 
 
 class StatCard(QFrame):
-    def __init__(self, title: str, value: str, icon: str, color: str, parent=None):
+    def __init__(self, title: str, value: str, color: str, parent=None):
         super().__init__(parent)
         self._color = color
         self.setStyleSheet(f"""
             QFrame {{
                 background: {BG_CARD};
                 border: 1px solid {BORDER};
-                border-radius: 14px;
-                border-top: 2px solid {color};
+                border-radius: 6px;
             }}
         """)
 
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 60))
-        shadow.setOffset(0, 6)
-        self.setGraphicsEffect(shadow)
-
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(4)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(6)
 
-        top = QHBoxLayout()
         self.value_lbl = QLabel(value)
         self.value_lbl.setStyleSheet(f"""
             color: {TEXT1};
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
             background: transparent;
             border: none;
-            letter-spacing: -1px;
+            letter-spacing: -0.5px;
         """)
-        top.addWidget(self.value_lbl)
-        top.addStretch()
+        layout.addWidget(self.value_lbl)
 
-        icon_lbl = QLabel(icon)
-        icon_lbl.setStyleSheet(f"font-size: 26px; background: transparent; border: none; color: {color};")
-        top.addWidget(icon_lbl)
-        layout.addLayout(top)
+        row = QHBoxLayout()
+        row.setSpacing(6)
 
-        title_lbl = QLabel(title.upper())
-        title_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; background: transparent; border: none;")
-        layout.addWidget(title_lbl)
+        dot = QLabel()
+        dot.setFixedSize(6, 6)
+        dot.setStyleSheet(f"background: {color}; border-radius: 3px; border: none;")
+        row.addWidget(dot)
+
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 11px; font-weight: 500; background: transparent; border: none;")
+        row.addWidget(title_lbl)
+        row.addStretch()
+        layout.addLayout(row)
 
     def set_value(self, v: str):
         self.value_lbl.setText(v)
@@ -204,93 +202,110 @@ class AlertItem(QFrame):
     def __init__(self, error_info: dict, on_fix, on_ignore, parent=None):
         super().__init__(parent)
         self.error_info = error_info
-        sev = error_info.get("severity", "HIGH")
+        sev   = error_info.get("severity", "HIGH")
         color = SEV_COLORS.get(sev, ORANGE)
-        icon = SEV_ICONS.get(sev, "⚠️")
 
         self.setStyleSheet(f"""
             QFrame {{
                 background: {BG_CARD};
                 border: 1px solid {BORDER};
-                border-left: 3px solid {color};
-                border-radius: 10px;
+                border-left: 2px solid {color};
+                border-radius: 4px;
             }}
+            QFrame:hover {{ border-color: {BORDER2}; border-left: 2px solid {color}; }}
         """)
 
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(18, 14, 14, 14)
+        outer.setContentsMargins(16, 12, 12, 12)
+        outer.setSpacing(14)
 
-        
-        icon_lbl = QLabel(icon)
-        icon_lbl.setStyleSheet("font-size: 20px; background: transparent; border: none;")
-        icon_lbl.setFixedWidth(32)
-        outer.addWidget(icon_lbl)
+        # Severity indicator dot
+        dot_col = QVBoxLayout()
+        dot_col.setAlignment(Qt.AlignmentFlag.AlignTop)
+        dot = QLabel()
+        dot.setFixedSize(8, 8)
+        dot.setStyleSheet(f"background: {color}; border-radius: 4px; border: none; margin-top: 4px;")
+        dot_col.addWidget(dot)
+        outer.addLayout(dot_col)
 
-        
+        # Content
         mid = QVBoxLayout()
-        mid.setSpacing(2)
+        mid.setSpacing(3)
 
         name_lbl = QLabel(error_info.get("name", "Unknown Error"))
-        name_lbl.setStyleSheet(f"color: {TEXT1}; font-weight: bold; font-size: 13px; background: transparent; border: none;")
+        name_lbl.setStyleSheet(f"color: {TEXT1}; font-weight: 600; font-size: 13px; background: transparent; border: none;")
         mid.addWidget(name_lbl)
 
-        desc = QLabel(error_info.get("description", "")[:80] + "…")
+        desc_text = error_info.get("description", "")
+        if len(desc_text) > 90:
+            desc_text = desc_text[:90] + "..."
+        desc = QLabel(desc_text)
         desc.setStyleSheet(f"color: {TEXT2}; font-size: 11px; background: transparent; border: none;")
         desc.setWordWrap(True)
         mid.addWidget(desc)
 
-        
-        badge_row = QHBoxLayout()
-        badge_row.setSpacing(6)
-        sev_badge = QLabel(f" {sev} ")
-        sev_badge.setStyleSheet(f"background: {color}; color: white; border-radius: 4px; font-size: 10px; font-weight: bold; padding: 1px 6px; border: none;")
-        badge_row.addWidget(sev_badge)
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(10)
 
-        cat_badge = QLabel(f" {error_info.get('category', 'System')} ")
-        cat_badge.setStyleSheet(f"background: {BG_CARD2}; color: {TEXT2}; border-radius: 4px; font-size: 10px; padding: 1px 6px; border: 1px solid {BORDER};")
-        badge_row.addWidget(cat_badge)
+        sev_lbl = QLabel(sev)
+        sev_lbl.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: 600; background: transparent; border: none;")
+        meta_row.addWidget(sev_lbl)
 
-        time_lbl = QLabel(error_info.get("detected_at", "")[:19].replace("T", " "))
-        time_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none;")
-        badge_row.addWidget(time_lbl)
-        badge_row.addStretch()
-        mid.addLayout(badge_row)
+        sep = QLabel("|")
+        sep.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none;")
+        meta_row.addWidget(sep)
 
-        outer.addLayout(mid)
+        cat_lbl = QLabel(error_info.get("category", "System"))
+        cat_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none;")
+        meta_row.addWidget(cat_lbl)
 
-        
+        ts = error_info.get("detected_at", "")[:16].replace("T", " ")
+        if ts:
+            sep2 = QLabel("|")
+            sep2.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none;")
+            meta_row.addWidget(sep2)
+            time_lbl = QLabel(ts)
+            time_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none;")
+            meta_row.addWidget(time_lbl)
+
+        meta_row.addStretch()
+        mid.addLayout(meta_row)
+        outer.addLayout(mid, 1)
+
+        # Action buttons
         btn_col = QVBoxLayout()
         btn_col.setSpacing(6)
+        btn_col.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        fix_btn = QPushButton("✅ Fix Now")
+        fix_btn = QPushButton("Fix")
+        fix_btn.setFixedSize(64, 28)
         fix_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {GREEN};
+                background: {ACCENT};
                 color: white;
                 border: none;
-                border-radius: 6px;
-                padding: 6px 16px;
-                font-weight: bold;
-                font-size: 12px;
+                border-radius: 4px;
+                font-weight: 600;
+                font-size: 11px;
             }}
-            QPushButton:hover {{ background: #00B85C; }}
-            QPushButton:pressed {{ background: #009A4D; }}
+            QPushButton:hover {{ background: #6D7EF7; }}
+            QPushButton:pressed {{ background: #4A5BE0; }}
         """)
         fix_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         fix_btn.clicked.connect(lambda: on_fix(error_info, self))
         btn_col.addWidget(fix_btn)
 
         ign_btn = QPushButton("Ignore")
+        ign_btn.setFixedSize(64, 28)
         ign_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {BG_CARD2};
-                color: {TEXT2};
+                background: transparent;
+                color: {TEXT3};
                 border: 1px solid {BORDER};
-                border-radius: 6px;
-                padding: 6px 16px;
-                font-size: 12px;
+                border-radius: 4px;
+                font-size: 11px;
             }}
-            QPushButton:hover {{ background: {BORDER}; color: {TEXT1}; }}
+            QPushButton:hover {{ color: {TEXT2}; border-color: {BORDER2}; }}
         """)
         ign_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         ign_btn.clicked.connect(lambda: on_ignore(self))
@@ -304,16 +319,285 @@ class RepairDialog(QDialog):
     def __init__(self, error_info: dict, parent=None):
         super().__init__(parent)
         self.error_info = error_info
-        self.repair_id = error_info.get("repair_id", "")
-        self.worker = None
+        self.repair_id  = error_info.get("repair_id", "")
+        self.worker     = None
 
-        self.setWindowTitle("SmartFix AI — Repairing")
-        self.setFixedSize(500, 340)
-        self.setStyleSheet(f"background: {BG_MAIN}; color: {TEXT1};")
+        self.setWindowTitle("SmartFix — Repairing")
+        self.setFixedSize(480, 320)
+        self.setStyleSheet(f"""
+            QDialog {{ background: {BG_CARD}; }}
+            QLabel  {{ background: transparent; border: none; }}
+        """)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
-
         self._build_ui()
         self._start_repair()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Top bar
+        top = QFrame()
+        top.setFixedHeight(52)
+        top.setStyleSheet(f"background: {BG_SIDEBAR}; border-bottom: 1px solid {BORDER};")
+        top_l = QHBoxLayout(top)
+        top_l.setContentsMargins(20, 0, 20, 0)
+
+        brand = QLabel("SmartFix")
+        brand.setStyleSheet(f"color: {TEXT3}; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;")
+        top_l.addWidget(brand)
+        top_l.addStretch()
+
+        self.title_lbl = QLabel("Repairing...")
+        self.title_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 11px;")
+        top_l.addWidget(self.title_lbl)
+        layout.addWidget(top)
+
+        # Progress bar (below top bar)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setFixedHeight(2)
+        self.progress.setTextVisible(False)
+        self.progress.setStyleSheet(f"""
+            QProgressBar {{ background: {BORDER}; border: none; }}
+            QProgressBar::chunk {{ background: {ACCENT}; }}
+        """)
+        layout.addWidget(self.progress)
+
+        # Body
+        body = QWidget()
+        body_l = QVBoxLayout(body)
+        body_l.setContentsMargins(24, 20, 24, 20)
+        body_l.setSpacing(12)
+
+        err_name = QLabel(self.error_info.get("name", ""))
+        err_name.setStyleSheet(f"color: {TEXT1}; font-size: 15px; font-weight: 600;")
+        body_l.addWidget(err_name)
+
+        self.log_box = QTextEdit()
+        self.log_box.setReadOnly(True)
+        self.log_box.setPlaceholderText("Running repair...")
+        body_l.addWidget(self.log_box)
+
+        self.result_lbl = QLabel()
+        self.result_lbl.setWordWrap(True)
+        self.result_lbl.setVisible(False)
+        body_l.addWidget(self.result_lbl)
+
+        self.close_btn = QPushButton("Done")
+        self.close_btn.setVisible(False)
+        self.close_btn.setFixedHeight(36)
+        self.close_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {ACCENT}; color: white; border: none;
+                border-radius: 4px; font-weight: 600; font-size: 12px;
+            }}
+            QPushButton:hover {{ background: #6D7EF7; }}
+        """)
+        self.close_btn.clicked.connect(self.accept)
+        body_l.addWidget(self.close_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(body)
+
+    def _start_repair(self):
+        self.log_box.append(f"Starting: {self.repair_id}")
+        self.worker = RepairWorker(self.repair_id)
+        self.worker.finished.connect(self._on_repair_done)
+        self.worker.start()
+
+    def _on_repair_done(self, result: dict):
+        success = result.get("success", False)
+        output  = result.get("output", "")[:600]
+        elapsed = result.get("elapsed_seconds", 0)
+
+        self.log_box.append(f"\n{output}\n\nCompleted in {elapsed}s")
+        self.progress.setRange(0, 100)
+        self.progress.setValue(100)
+        self.progress.setStyleSheet(f"""
+            QProgressBar {{ background: {BORDER}; border: none; }}
+            QProgressBar::chunk {{ background: {'#34D399' if success else RED}; }}
+        """)
+
+        log_repair(self.error_info, result)
+
+        if success:
+            self.title_lbl.setText("Repair complete")
+            self.result_lbl.setText("The issue has been resolved.")
+            self.result_lbl.setStyleSheet(f"color: {GREEN}; font-size: 12px; font-weight: 600;")
+        else:
+            self.title_lbl.setText("Repair encountered issues")
+            self.result_lbl.setText("Some steps may need Administrator rights.")
+            self.result_lbl.setStyleSheet(f"color: {ORANGE}; font-size: 12px; font-weight: 600;")
+
+        self.result_lbl.setVisible(True)
+        self.close_btn.setVisible(True)
+
+
+
+class AlertPopup(QDialog):
+    """Minimal notification toast — bottom right. CRITICAL only. One at a time."""
+
+    def __init__(self, error_info: dict, parent=None):
+        super().__init__(parent)
+        self.error_info = error_info
+        self._countdown = 25
+
+        self.setFixedWidth(340)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._build_ui()
+        self._position()
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(1000)
+
+    def _build_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(6, 6, 6, 6)
+
+        card = QFrame()
+        card.setObjectName("toast")
+        card.setStyleSheet(f"""
+            QFrame#toast {{
+                background: {BG_CARD};
+                border: 1px solid {BORDER2};
+                border-radius: 8px;
+            }}
+        """)
+
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(28)
+        shadow.setColor(QColor(0, 0, 0, 140))
+        shadow.setOffset(0, 6)
+        card.setGraphicsEffect(shadow)
+        outer.addWidget(card)
+
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(0)
+
+        # Top strip
+        strip = QFrame()
+        strip.setFixedHeight(3)
+        strip.setStyleSheet(f"background: {RED}; border-radius: 8px 8px 0 0; border: none;")
+        cl.addWidget(strip)
+
+        body = QWidget()
+        body_l = QVBoxLayout(body)
+        body_l.setContentsMargins(16, 12, 16, 12)
+        body_l.setSpacing(8)
+
+        # Header
+        hdr = QHBoxLayout()
+        app_lbl = QLabel("SMARTFIX")
+        app_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; background: transparent;")
+        hdr.addWidget(app_lbl)
+        hdr.addStretch()
+        time_lbl = QLabel(datetime.now().strftime("%H:%M"))
+        time_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent;")
+        hdr.addWidget(time_lbl)
+        x_btn = QPushButton("x")
+        x_btn.setFixedSize(16, 16)
+        x_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        x_btn.setStyleSheet(f"QPushButton {{ background: transparent; border: none; color: {TEXT3}; font-size: 10px; margin-left:6px; }} QPushButton:hover {{ color: {TEXT1}; }}")
+        x_btn.clicked.connect(self._ignore)
+        hdr.addWidget(x_btn)
+        body_l.addLayout(hdr)
+
+        # Error name
+        name_lbl = QLabel(self.error_info.get("name", "Critical Error"))
+        name_lbl.setStyleSheet(f"color: {TEXT1}; font-size: 13px; font-weight: 600; background: transparent;")
+        name_lbl.setWordWrap(True)
+        body_l.addWidget(name_lbl)
+
+        cat_lbl = QLabel(f"Critical  ·  {self.error_info.get('category', 'System')}")
+        cat_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent;")
+        body_l.addWidget(cat_lbl)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        fix_btn = QPushButton("Fix Now")
+        fix_btn.setFixedHeight(30)
+        fix_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {ACCENT}; color: white; border: none;
+                border-radius: 4px; padding: 0 16px;
+                font-weight: 600; font-size: 11px;
+            }}
+            QPushButton:hover {{ background: #6D7EF7; }}
+        """)
+        fix_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        fix_btn.clicked.connect(self._fix)
+        btn_row.addWidget(fix_btn)
+
+        ign_btn = QPushButton("Dismiss")
+        ign_btn.setFixedHeight(30)
+        ign_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {TEXT3};
+                border: 1px solid {BORDER}; border-radius: 4px;
+                padding: 0 12px; font-size: 11px;
+            }}
+            QPushButton:hover {{ color: {TEXT2}; }}
+        """)
+        ign_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        ign_btn.clicked.connect(self._ignore)
+        btn_row.addWidget(ign_btn)
+        btn_row.addStretch()
+        body_l.addLayout(btn_row)
+        cl.addWidget(body)
+
+        # Countdown bar
+        self.countdown_bar = QProgressBar()
+        self.countdown_bar.setRange(0, 25)
+        self.countdown_bar.setValue(25)
+        self.countdown_bar.setFixedHeight(2)
+        self.countdown_bar.setTextVisible(False)
+        self.countdown_bar.setStyleSheet(f"""
+            QProgressBar {{ background: transparent; border: none; }}
+            QProgressBar::chunk {{ background: {BORDER2}; }}
+        """)
+        cl.addWidget(self.countdown_bar)
+
+    def _position(self):
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.adjustSize()
+        tx = screen.right() - self.width() - 16
+        ty = screen.bottom() - self.height() - 16
+        self.move(screen.right() + 40, ty)
+        self.animation = QPropertyAnimation(self, b"pos")
+        self.animation.setDuration(280)
+        self.animation.setStartValue(QPoint(screen.right() + 40, ty))
+        self.animation.setEndValue(QPoint(tx, ty))
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.start()
+
+    def _tick(self):
+        self._countdown -= 1
+        self.countdown_bar.setValue(self._countdown)
+        if self._countdown <= 0:
+            self._ignore()
+
+    def _fix(self):
+        self._timer.stop()
+        self.hide()
+        if self.error_info.get("repair_id") == "unknown_error":
+            dlg = AIAssistantDialog(self.error_info)
+        else:
+            dlg = RepairDialog(self.error_info)
+        dlg.exec()
+        self.close()
+
+    def _ignore(self):
+        self._timer.stop()
+        self.close()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -705,7 +989,7 @@ class MainWindow(QMainWindow):
 
     def _make_sidebar(self):
         sidebar = QFrame()
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(200)
         sidebar.setStyleSheet(f"""
             QFrame {{
                 background: {BG_SIDEBAR};
@@ -717,91 +1001,111 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        
+        # Brand area
         logo_frame = QFrame()
-        logo_frame.setStyleSheet(f"background: {BG_CARD}; border-bottom: 1px solid {BORDER};")
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(20, 20, 20, 20)
+        logo_frame.setFixedHeight(60)
+        logo_frame.setStyleSheet(f"background: {BG_SIDEBAR}; border-bottom: 1px solid {BORDER};")
+        logo_l = QHBoxLayout(logo_frame)
+        logo_l.setContentsMargins(16, 0, 16, 0)
 
-        shield = QLabel("🛡")
-        shield.setStyleSheet("font-size: 36px; background: transparent; border: none;")
-        logo_layout.addWidget(shield)
+        icon_box = QLabel("SF")
+        icon_box.setFixedSize(28, 28)
+        icon_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_box.setStyleSheet(f"""
+            background: {ACCENT};
+            color: white;
+            border-radius: 6px;
+            border: none;
+            font-size: 11px;
+            font-weight: 700;
+        """)
+        logo_l.addWidget(icon_box)
 
-        brand = QLabel("SmartFix AI")
-        brand.setStyleSheet(f"color: {TEXT1}; font-size: 18px; font-weight: bold; background: transparent; border: none;")
-        logo_layout.addWidget(brand)
-
-        tagline = QLabel("Windows Error Monitor")
-        tagline.setStyleSheet(f"color: {TEXT2}; font-size: 10px; background: transparent; border: none;")
-        logo_layout.addWidget(tagline)
-
+        brand_col = QVBoxLayout()
+        brand_col.setSpacing(0)
+        brand_lbl = QLabel("SmartFix")
+        brand_lbl.setStyleSheet(f"color: {TEXT1}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+        brand_col.addWidget(brand_lbl)
+        sub_lbl = QLabel("Error Monitor")
+        sub_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none;")
+        brand_col.addWidget(sub_lbl)
+        logo_l.addLayout(brand_col)
+        logo_l.addStretch()
         layout.addWidget(logo_frame)
 
-        
+        # Status pill
         self.status_frame = QFrame()
-        self.status_frame.setStyleSheet(f"background: {BG_CARD2}; border-bottom: 1px solid {BORDER};")
-        status_layout = QHBoxLayout(self.status_frame)
-        status_layout.setContentsMargins(20, 10, 20, 10)
-        self.status_dot = QLabel("●")
-        self.status_dot.setStyleSheet(f"color: {GREEN}; font-size: 12px; background: transparent; border: none;")
-        status_layout.addWidget(self.status_dot)
-        self.status_lbl = QLabel("Monitoring Active")
-        self.status_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 11px; background: transparent; border: none;")
-        status_layout.addWidget(self.status_lbl)
+        self.status_frame.setFixedHeight(36)
+        self.status_frame.setStyleSheet(f"background: {BG_SIDEBAR}; border-bottom: 1px solid {BORDER};")
+        status_l = QHBoxLayout(self.status_frame)
+        status_l.setContentsMargins(16, 0, 16, 0)
+        self.status_dot = QLabel()
+        self.status_dot.setFixedSize(6, 6)
+        self.status_dot.setStyleSheet(f"background: {GREEN}; border-radius: 3px; border: none;")
+        status_l.addWidget(self.status_dot)
+        self.status_lbl = QLabel("Monitoring")
+        self.status_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent; border: none; margin-left: 6px;")
+        status_l.addWidget(self.status_lbl)
+        status_l.addStretch()
         layout.addWidget(self.status_frame)
 
-        
+        # Nav section label
+        nav_section = QLabel("NAVIGATION")
+        nav_section.setStyleSheet(f"color: {TEXT3}; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; background: transparent; border: none; padding: 14px 16px 6px 16px;")
+        layout.addWidget(nav_section)
+
         nav_items = [
-            ("⊞", "Dashboard",    0),
-            ("⚡", "Active Alerts", 1),
-            ("☰", "Error Catalog", 2),
-            ("▷", "Demo Mode",    3),
-            ("◷", "History",      4),
-            ("◈", "Network Diag", 5),
-            ("⊟", "System Report", 6),
+            ("Dashboard",     0),
+            ("Active Alerts", 1),
+            ("Error Catalog", 2),
+            ("Demo Mode",     3),
+            ("History",       4),
+            ("Network",       5),
+            ("System Report", 6),
         ]
 
-        nav_area = QWidget()
-        nav_area.setStyleSheet("background: transparent;")
-        nav_layout = QVBoxLayout(nav_area)
-        nav_layout.setContentsMargins(10, 8, 10, 8)
-        nav_layout.setSpacing(2)
+        nav_wrap = QWidget()
+        nav_wrap.setStyleSheet("background: transparent;")
+        nav_l = QVBoxLayout(nav_wrap)
+        nav_l.setContentsMargins(8, 0, 8, 0)
+        nav_l.setSpacing(1)
 
         self._nav_btns = []
-        for icon, label, idx in nav_items:
-            btn = QPushButton(f"{icon}  {label}")
-            btn.setFixedHeight(40)
+        for label, idx in nav_items:
+            btn = QPushButton(label)
+            btn.setFixedHeight(34)
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent;
-                    color: {TEXT3};
+                    color: {TEXT2};
                     border: none;
                     text-align: left;
-                    padding-left: 14px;
-                    font-size: 13px;
-                    border-radius: 8px;
+                    padding-left: 12px;
+                    font-size: 12px;
+                    border-radius: 4px;
+                    font-weight: 400;
                 }}
                 QPushButton:hover {{
                     background: {BG_CARD};
-                    color: {TEXT2};
+                    color: {TEXT1};
                 }}
                 QPushButton:checked {{
-                    background: {ACCENT}18;
-                    color: {ACCENT};
-                    font-weight: 600;
+                    background: {BG_CARD};
+                    color: {TEXT1};
+                    font-weight: 500;
                 }}
             """)
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked, i=idx, b=btn: self._nav(i, b))
             self._nav_btns.append(btn)
-            nav_layout.addWidget(btn)
+            nav_l.addWidget(btn)
 
-        layout.addWidget(nav_area)
+        layout.addWidget(nav_wrap)
         self._nav_btns[0].setChecked(True)
         layout.addStretch()
 
-        ver_lbl = QLabel("v1.0  ·  B.E. Major Project")
-        ver_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 9px; background: transparent; border: none; padding: 12px 20px;")
+        ver_lbl = QLabel("v1.0")
+        ver_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 9px; background: transparent; border: none; padding: 10px 16px;")
         layout.addWidget(ver_lbl)
 
         return sidebar
@@ -833,43 +1137,43 @@ class MainWindow(QMainWindow):
         cards_row = QHBoxLayout()
         cards_row.setSpacing(14)
 
-        self.card_alerts   = StatCard("Active Alerts", "0", "⚡", RED)
-        self.card_fixed    = StatCard("Issues Fixed", "0", "✓", GREEN)
-        self.card_monitored= StatCard("Errors Monitored", str(len(CATALOG_LIST)), "◉", ACCENT)
-        self.card_uptime   = StatCard("Uptime", "0m", "◷", YELLOW)
+        self.card_alerts    = StatCard("Active Alerts",     "0",                     RED)
+        self.card_fixed     = StatCard("Issues Fixed",      "0",                     GREEN)
+        self.card_monitored = StatCard("Errors Monitored",  str(len(CATALOG_LIST)),  ACCENT)
+        self.card_uptime    = StatCard("Uptime",            "0m",                    TEXT3)
 
         for card in [self.card_alerts, self.card_fixed, self.card_monitored, self.card_uptime]:
-            card.setFixedHeight(120)
+            card.setFixedHeight(100)
             cards_row.addWidget(card)
         layout.addLayout(cards_row)
 
         health_row = QHBoxLayout()
         health_title = QLabel("System Health")
-        health_title.setStyleSheet(f"color: {TEXT1}; font-size: 16px; font-weight: 600; letter-spacing: -0.3px;")
+        health_title.setStyleSheet(f"color: {TEXT2}; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;")
         health_row.addWidget(health_title)
         health_row.addStretch()
         layout.addLayout(health_row)
 
         health_grid = QGridLayout()
-        health_grid.setSpacing(10)
+        health_grid.setSpacing(8)
 
         self.health_widgets = {}
         health_items = [
-            ("CPU Usage",          "cpu",    "--"),
-            ("Memory Usage",       "ram",    "--"),
-            ("Disk (C:) Usage",    "disk",   "--"),
-            ("Network Status",     "net",    "--"),
-            ("Critical Services",  "svc",    "--"),
-            ("Recent Alerts",      "errors", "--"),
+            ("CPU Usage",         "cpu",    "--"),
+            ("Memory Usage",      "ram",    "--"),
+            ("Disk (C:)",         "disk",   "--"),
+            ("Network",           "net",    "--"),
+            ("Critical Services", "svc",    "--"),
+            ("Recent Alerts",     "errors", "--"),
         ]
         for i, (label, key, val) in enumerate(health_items):
             card = QFrame()
-            card.setStyleSheet(f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 10px;")
+            card.setStyleSheet(f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 4px;")
             card_layout = QHBoxLayout(card)
-            card_layout.setContentsMargins(18, 14, 18, 14)
+            card_layout.setContentsMargins(14, 11, 14, 11)
 
             lbl = QLabel(label)
-            lbl.setStyleSheet(f"color: {TEXT3}; font-size: 11px; font-weight: 500; background: transparent; border: none; letter-spacing: 0.02em;")
+            lbl.setStyleSheet(f"color: {TEXT3}; font-size: 11px; font-weight: 500; background: transparent; border: none;")
             card_layout.addWidget(lbl)
             card_layout.addStretch()
 
@@ -894,20 +1198,21 @@ class MainWindow(QMainWindow):
         
         hdr = QHBoxLayout()
         title = QLabel("Active Alerts")
-        title.setStyleSheet(f"color: {TEXT1}; font-size: 22px; font-weight: bold;")
+        title.setStyleSheet(f"color: {TEXT1}; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;")
         hdr.addWidget(title)
         hdr.addStretch()
 
-        clear_btn = QPushButton("Clear All")
+        clear_btn = QPushButton("Clear all")
         clear_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: {TEXT2};
+                color: {TEXT3};
                 border: 1px solid {BORDER};
-                border-radius: 6px;
-                padding: 6px 16px;
+                border-radius: 4px;
+                padding: 5px 14px;
+                font-size: 11px;
             }}
-            QPushButton:hover {{ color: {RED}; border-color: {RED}; }}
+            QPushButton:hover {{ color: {RED}; border-color: {RED}40; }}
         """)
         clear_btn.clicked.connect(self._clear_all_alerts)
         hdr.addWidget(clear_btn)
@@ -978,37 +1283,53 @@ class MainWindow(QMainWindow):
 
     def _make_demo_page(self):
         page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(20)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(28, 24, 28, 24)
+        outer.setSpacing(16)
 
-        
-        title = QLabel("🎭 Judge Demo Mode")
-        title.setStyleSheet(f"color: {TEXT1}; font-size: 22px; font-weight: bold;")
-        layout.addWidget(title)
+        title = QLabel("Demo Mode")
+        title.setStyleSheet(f"color: {TEXT1}; font-size: 26px; font-weight: 700; letter-spacing: -0.5px;")
+        outer.addWidget(title)
 
-        subtitle = QLabel("Select a scenario to simulate a real Windows error. SmartFix will detect it in seconds and show the alert popup.\nClick 'Fix Now' to apply the real repair and verify the result.")
+        subtitle = QLabel(
+            "Select a scenario to simulate a real Windows error. "
+            "SmartFix detects it in seconds and shows the alert. "
+            "Click \u2018Fix Now\u2019 to apply the real repair."
+        )
         subtitle.setStyleSheet(f"color: {TEXT2}; font-size: 12px;")
         subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
+        outer.addWidget(subtitle)
 
-        
         warn = QFrame()
         warn.setStyleSheet(f"background: {ORANGE}18; border: 1px solid {ORANGE}60; border-radius: 8px;")
         warn_layout = QHBoxLayout(warn)
-        warn_layout.setContentsMargins(16, 12, 16, 12)
-        warn_layout.addWidget(QLabel("⚠️"))
+        warn_layout.setContentsMargins(16, 10, 16, 10)
+        warn_icon = QLabel("\u26a0")
+        warn_icon.setStyleSheet(f"color: {ORANGE}; font-size: 16px; background: transparent; border: none;")
+        warn_layout.addWidget(warn_icon)
         warn_lbl = QLabel("Demo scenarios temporarily stop real Windows services. They are fully reversed by the repair. Requires Administrator.")
         warn_lbl.setStyleSheet(f"color: {ORANGE}; font-size: 11px; background: transparent; border: none;")
         warn_lbl.setWordWrap(True)
         warn_layout.addWidget(warn_lbl, 1)
-        layout.addWidget(warn)
+        outer.addWidget(warn)
 
-        
+        # Scrollable card list — fully responsive at any window size
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        cards_widget = QWidget()
+        cards_widget.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(cards_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
         for sc in DEMO_LIST:
             self._make_demo_card(layout, sc)
 
         layout.addStretch()
+        scroll.setWidget(cards_widget)
+        outer.addWidget(scroll)
         return page
 
     def _make_demo_card(self, parent_layout, sc):
@@ -1288,49 +1609,96 @@ class MainWindow(QMainWindow):
         self._start_time = time.time()
 
     def _start_metric_timer(self):
+        # Prime psutil cpu_percent so first real reading is accurate
+        try:
+            import psutil as _ps
+            _ps.cpu_percent(interval=None)
+        except Exception:
+            pass
+
         self._metric_timer = QTimer(self)
         self._metric_timer.timeout.connect(self._update_metrics)
-        self._metric_timer.start(5000)  
-        self._update_metrics()
+        self._metric_timer.start(4000)   # update every 4 seconds
+        QTimer.singleShot(1200, self._update_metrics)  # first reading after 1.2s warmup
 
     def _update_metrics(self):
-        try:
-            import psutil
-            cpu = psutil.cpu_percent(interval=0)
-            mem = psutil.virtual_memory()
-            disk = psutil.disk_usage('C:\\')
-            uptime_m = int((time.time() - self._start_time) / 60)
+        """Run metric collection on a background thread, post results back to UI."""
+        def _collect():
+            try:
+                import psutil
+                cpu  = psutil.cpu_percent(interval=1)   # blocking 1s sample — accurate
+                mem  = psutil.virtual_memory()
+                disk = psutil.disk_usage('C:\\')
+                net_ok = True
+                try:
+                    import socket
+                    socket.setdefaulttimeout(1)
+                    socket.gethostbyname("8.8.8.8")
+                except Exception:
+                    net_ok = False
+                uptime_m = int((time.time() - self._start_time) / 60)
+                self._alert_signal.emit({
+                    "__type__": "metric_update",
+                    "cpu":  cpu,
+                    "ram":  mem.percent,
+                    "disk": disk.percent,
+                    "net_ok": net_ok,
+                    "uptime_m": uptime_m,
+                })
+            except Exception as e:
+                logger.error(f"Metric collect failed: {e}")
 
-            def color_val(val, warn=70, crit=90):
-                if val >= crit: return RED
-                if val >= warn: return ORANGE
-                return GREEN
-
-            self.health_widgets["cpu"].setText(f"{cpu:.1f}%")
-            self.health_widgets["cpu"].setStyleSheet(f"color: {color_val(cpu)}; font-size: 13px; font-weight: bold; background: transparent; border: none;")
-
-            self.health_widgets["ram"].setText(f"{mem.percent:.1f}%")
-            self.health_widgets["ram"].setStyleSheet(f"color: {color_val(mem.percent)}; font-size: 13px; font-weight: bold; background: transparent; border: none;")
-
-            self.health_widgets["disk"].setText(f"{disk.percent:.1f}%")
-            self.health_widgets["disk"].setStyleSheet(f"color: {color_val(disk.percent)}; font-size: 13px; font-weight: bold; background: transparent; border: none;")
-
-            self.health_widgets["net"].setText("Connected ✓")
-            self.health_widgets["net"].setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: bold; background: transparent; border: none;")
-
-            self.card_uptime.set_value(f"{uptime_m}m")
-            self.card_monitored.set_value(str(len(CATALOG_LIST)))
-            self.last_scan_lbl.setText(f"Last scan: {datetime.now().strftime('%H:%M:%S')}")
-        except Exception as e:
-            logger.error(f"Metric update failed: {e}")
+        t = threading.Thread(target=_collect, daemon=True)
+        t.start()
 
     
 
     def _show_alert(self, error_info: dict):
         """Called on main thread via signal."""
+
+        # ── Metric update from background thread ───────────────────
+        if error_info.get("__type__") == "metric_update":
+            def color_val(val, warn=70, crit=90):
+                if val >= crit: return RED
+                if val >= warn: return ORANGE
+                return GREEN
+
+            cpu  = error_info.get("cpu",  0)
+            ram  = error_info.get("ram",  0)
+            disk = error_info.get("disk", 0)
+            net_ok    = error_info.get("net_ok", True)
+            uptime_m  = error_info.get("uptime_m", 0)
+
+            self.health_widgets["cpu"].setText(f"{cpu:.1f}%")
+            self.health_widgets["cpu"].setStyleSheet(
+                f"color: {color_val(cpu)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+
+            self.health_widgets["ram"].setText(f"{ram:.1f}%")
+            self.health_widgets["ram"].setStyleSheet(
+                f"color: {color_val(ram)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+
+            self.health_widgets["disk"].setText(f"{disk:.1f}%")
+            self.health_widgets["disk"].setStyleSheet(
+                f"color: {color_val(disk)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+
+            net_txt = "Connected" if net_ok else "No Internet"
+            net_col = GREEN if net_ok else RED
+            self.health_widgets["net"].setText(net_txt)
+            self.health_widgets["net"].setStyleSheet(
+                f"color: {net_col}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+
+            hrs = uptime_m // 60
+            mins = uptime_m % 60
+            uptime_str = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+            self.card_uptime.set_value(uptime_str)
+            self.card_monitored.set_value(str(len(CATALOG_LIST)))
+            self.last_scan_lbl.setText(f"Updated {datetime.now().strftime('%H:%M:%S')}")
+            return
+
         sig_type = error_info.get("type")
-        
+
         if sig_type == "net_done":
+
             res = error_info.get("res", {})
             self.net_btn.setText("Run Network Diagnostics")
             self.net_btn.setEnabled(True)
