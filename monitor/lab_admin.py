@@ -118,13 +118,18 @@ class LabAdminManager:
             return list(self._clients.values())
 
     def add_client_manual(self, seat: str, ip: str, port: int = LAB_PORT):
-        """Manually register a client (e.g. from the UI)."""
+        """Manually register a client (e.g. from the UI). Ensures unique seat name."""
         with self._lock:
+            # If seat name already exists for a different IP, disambiguate
+            if seat in self._clients and self._clients[seat].ip != ip:
+                last_octet = ip.split(".")[-1] if "." in ip else ip
+                seat = f"{seat}-{last_octet}"
             if seat not in self._clients:
                 self._clients[seat] = ClientInfo(seat, ip, port)
             else:
                 self._clients[seat].ip   = ip
                 self._clients[seat].port = port
+            self._clients[seat].mark_seen()
         self._persist_clients()
         self._notify()
 
@@ -207,6 +212,17 @@ class LabAdminManager:
     def _handle_announce(self, seat: str, ip: str, port: int):
         new_client = False
         with self._lock:
+            # Check if this IP is already registered under another seat name
+            for s, c in list(self._clients.items()):
+                if c.ip == ip and s != seat:
+                    del self._clients[s]
+                    break
+
+            # If another machine with a different IP already uses this seat name, make it unique
+            if seat in self._clients and self._clients[seat].ip != ip:
+                last_octet = ip.split(".")[-1] if "." in ip else ip
+                seat = f"{seat}-{last_octet}"
+
             if seat not in self._clients:
                 logger.info(f"[LabAdmin] Discovered new client: {seat} @ {ip}")
                 self._clients[seat] = ClientInfo(seat, ip, port)

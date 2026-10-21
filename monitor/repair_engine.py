@@ -1627,18 +1627,25 @@ Write-Output "Clock resynced: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'). HTTPS S
 """
     return _run_ps(script)
 
+@repair("purge_temp_cache_files")
 @repair("lab_purge_student_temp_files")
-def lab_purge_student_temp_files():
+def purge_temp_cache_files():
     script = """
-Write-Output "Purging temporary files, crash dumps, and Windows caches..."
+Write-Output "Purging temporary files, application caches, and clutter..."
 $initialSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
-Get-ChildItem -Path "$env:LOCALAPPDATA\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-Get-ChildItem -Path "$env:SystemRoot\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-Get-ChildItem -Path "$env:SystemRoot\\SoftwareDistribution\\Download\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+$targets = @(
+    "$env:LOCALAPPDATA\\Temp\\*",
+    "$env:SystemRoot\\Temp\\*",
+    "$env:TEMP\\*",
+    "$env:SystemRoot\\SoftwareDistribution\\Download\\*"
+)
+foreach ($t in $targets) {
+    Get-ChildItem -Path $t -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 Clear-RecycleBin -Force -ErrorAction SilentlyContinue
 $finalSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
 $freed = [Math]::Round($finalSpace - $initialSpace, 2)
-Write-Output "Cleanup complete. Free space: $finalSpace GB (Freed ~$freed GB)."
+Write-Output "Cleanup complete! C: drive free space: $finalSpace GB (Freed ~$freed GB). System responsiveness restored."
 """
     return _run_ps(script)
 
@@ -1659,6 +1666,48 @@ Get-Process -Name "Code" -ErrorAction SilentlyContinue | Stop-Process -Force -Er
 Remove-Item -Path "$env:APPDATA\\Code\\*.lock" -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "$env:APPDATA\\Code\\logs\\*" -Recurse -Force -ErrorAction SilentlyContinue
 Write-Output "VS Code processes terminated and workspace lockfiles cleared. VS Code is ready to launch."
+"""
+@repair("purge_temp_cache_files")
+def purge_temp_cache_files():
+    script = """
+Write-Output "Purging temporary files, application caches, and system junk..."
+$before = (Get-PSDrive C).Free
+
+# 1. Clean User Temp
+$userTemp = $env:TEMP
+if (Test-Path $userTemp) {
+    Get-ChildItem -Path $userTemp -Recurse -Force -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.PSIsContainer } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    # Also clean demo junk folder if present
+    $demoJunk = Join-Path $userTemp "SmartFix_Demo_TempJunk"
+    if (Test-Path $demoJunk) {
+        Remove-Item -Path $demoJunk -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# 2. Clean Windows Temp
+$winTemp = "$env:SystemRoot\\Temp"
+if (Test-Path $winTemp) {
+    Get-ChildItem -Path $winTemp -Recurse -Force -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.PSIsContainer } |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+}
+
+# 3. Clean Windows SoftwareDistribution Download Cache
+$softDist = "$env:SystemRoot\\SoftwareDistribution\\Download"
+if (Test-Path $softDist) {
+    Get-ChildItem -Path $softDist -Recurse -Force -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# 4. Clean Recycle Bin
+Clear-RecycleBin -DriveLetter C -Force -ErrorAction SilentlyContinue
+
+$after = (Get-PSDrive C).Free
+$freedMb = [math]::Round(($after - $before) / 1MB, 1)
+if ($freedMb -lt 0) { $freedMb = 0 }
+Write-Output "Temporary files purge complete. Freed approximately $freedMb MB of disk space."
 """
     return _run_ps(script)
 

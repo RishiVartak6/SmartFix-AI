@@ -346,8 +346,10 @@ $result | ConvertTo-Json -Compress
                     pass
 
             size_mb = total_bytes / (1024 * 1024)
-            # Alert if temp size >= 500 MB or file count >= 1200
-            if size_mb >= 500 or file_count >= 1200:
+            # Alert if temp size >= 500 MB, file count >= 1000, or demo clutter folder exists
+            junk_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "SmartFix_Demo_TempJunk")
+            has_demo_junk = os.path.isdir(junk_dir)
+            if size_mb >= 500 or file_count >= 1000 or has_demo_junk:
                 err_def = ERROR_CATALOG.get("temp_files_overflow")
                 if err_def:
                     self._trigger_alert(err_def, {

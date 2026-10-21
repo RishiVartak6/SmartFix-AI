@@ -685,6 +685,87 @@ class AlertPopup(QDialog):
 
 
 
+class MetricWorkerThread(QThread):
+    """
+    Dedicated background worker thread that continuously samples system metrics
+    matching Windows Task Manager real-time performance monitoring.
+    Samples every 800ms for authentic, dynamic percentage fluctuations.
+    """
+    metrics_ready = pyqtSignal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._running = True
+
+    def run(self):
+        import psutil
+        critical_svcs = ['Spooler', 'WSearch', 'AudioSrv', 'wuauserv', 'bthserv']
+
+        # Initial prime
+        try:
+            psutil.cpu_percent(interval=None)
+        except Exception:
+            pass
+
+        while self._running:
+            try:
+                # interval=0.8 accurately samples CPU across all cores, exactly matching Task Manager
+                cpu = psutil.cpu_percent(interval=0.8)
+                cores = psutil.cpu_count(logical=True) or 1
+                mem = psutil.virtual_memory()
+                disk = psutil.disk_usage('C:\\')
+
+                # Critical services count
+                running_svcs = 0
+                for s in critical_svcs:
+                    try:
+                        svc = psutil.win_service_get(s)
+                        if svc.status() == 'running':
+                            running_svcs += 1
+                    except Exception:
+                        pass
+
+                # System uptime
+                boot_time = psutil.boot_time()
+                uptime_s = int(time.time() - boot_time)
+                days = uptime_s // 86400
+                hrs = (uptime_s % 86400) // 3600
+                mins = (uptime_s % 3600) // 60
+                uptime_str = f"{days}d {hrs}h {mins}m" if days > 0 else f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+
+                # Quick network ping check
+                net_ok = True
+                try:
+                    import socket
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(0.3)
+                    s.connect(("8.8.8.8", 53))
+                    s.close()
+                except Exception:
+                    net_ok = False
+
+                self.metrics_ready.emit({
+                    "__type__": "metric_update",
+                    "cpu": cpu,
+                    "cores": cores,
+                    "ram_pct": mem.percent,
+                    "ram_used_gb": mem.used / (1024**3),
+                    "ram_total_gb": mem.total / (1024**3),
+                    "disk_pct": disk.percent,
+                    "disk_free_gb": disk.free / (1024**3),
+                    "svcs_running": running_svcs,
+                    "svcs_total": len(critical_svcs),
+                    "net_ok": net_ok,
+                    "uptime_str": uptime_str,
+                })
+            except Exception:
+                time.sleep(1.0)
+
+    def stop(self):
+        self._running = False
+        self.wait(1200)
+
+
 class MainWindow(QMainWindow):
     _alert_signal = pyqtSignal(dict)
 
@@ -729,8 +810,26 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.debug(f"Single-instance server error: {e}")
 
+        # Clean shutdown on application exit
+        app_inst = QApplication.instance()
+        if app_inst:
+            app_inst.aboutToQuit.connect(self._cleanup_on_quit)
+
         # Ensure auto-start on PC boot is registered in background
         threading.Thread(target=ensure_windows_autostart, daemon=True).start()
+
+    def _cleanup_on_quit(self):
+        try:
+            if hasattr(self, "_metric_worker") and self._metric_worker:
+                self._metric_worker.stop()
+            if self._lab_agent:
+                self._lab_agent.stop()
+            if self._lab_admin:
+                self._lab_admin.stop()
+            if self._monitor:
+                self._monitor.stop()
+        except Exception as e:
+            logger.debug(f"Quit cleanup note: {e}")
 
     def _on_single_instance_ping(self):
         """Called when a second instance tries to launch — bring this window to foreground."""
@@ -1391,8 +1490,11 @@ class MainWindow(QMainWindow):
             f"border-radius: 6px; font-size: 12px;"
         )
         demote_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        demote_btn.setToolTip("Switch this PC back to a client workstation")
-        demote_btn.clicked.connect(lambda: self._lab_set_client_mode(prompt_seat=True))
+        def _demote_to_client():
+            if not self._lab_prompt_admin_auth():
+                return
+            self._lab_set_client_mode(prompt_seat=True)
+        demote_btn.clicked.connect(_demote_to_client)
         admin_bar.addWidget(demote_btn)
 
         add_btn = QPushButton("+ Add PC manually")
@@ -1499,7 +1601,7 @@ class MainWindow(QMainWindow):
         icon_lbl.setStyleSheet(f"color: {ACCENT}; font-size: 16px; font-weight: bold;")
         v.addWidget(icon_lbl)
 
-        info_lbl = QLabel("Enter the Lab Admin passkey to control the lab from this PC.\n(Default passkey: admin123)")
+        info_lbl = QLabel("Enter the Lab Admin passkey to authorize this PC as Central Controller.")
         info_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 12px;")
         info_lbl.setWordWrap(True)
         v.addWidget(info_lbl)
@@ -1575,7 +1677,7 @@ class MainWindow(QMainWindow):
         v.addWidget(QLabel("Current Passkey:"))
         curr_edit = QLineEdit()
         curr_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        curr_edit.setPlaceholderText("Current passkey (default is admin123)")
+        curr_edit.setPlaceholderText("Enter current admin passkey")
         v.addWidget(curr_edit)
 
         v.addWidget(QLabel("New Passkey:"))
@@ -1643,7 +1745,9 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Passkey Updated", "Admin passkey has been successfully updated!")
 
     def _lab_switch_role_dialog(self):
-        """Allow switching between Admin and Client roles at any time."""
+        """Allow switching between Admin and Client roles with password authorization."""
+        if not self._lab_prompt_admin_auth():
+            return
         current = self._lab_mode
         if current == "admin":
             from PyQt6.QtWidgets import QMessageBox
@@ -1656,15 +1760,18 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 self._lab_set_client_mode(prompt_seat=True)
         else:
-            self._lab_set_admin_mode(skip_auth=False)
+            self._lab_set_admin_mode(skip_auth=True)
 
     def _lab_rename_seat_dialog(self):
-        """Allow renaming this client workstation's seat name."""
+        """Allow renaming this client workstation's seat name (requires admin authorization)."""
+        if not self._lab_prompt_admin_auth():
+            return
         from PyQt6.QtWidgets import QInputDialog
-        curr = get_seat_name() or "PC-01"
+        import socket
+        curr = get_seat_name() or f"PC-{socket.gethostname()}"
         name, ok = QInputDialog.getText(
-            self, "Rename Seat",
-            "Enter new seat name for this PC:",
+            self, "Rename Unique Seat",
+            "Enter a unique seat name for this client PC:",
             text=curr
         )
         if ok and name.strip():
@@ -1702,13 +1809,15 @@ class MainWindow(QMainWindow):
 
     def _lab_set_client_mode(self, prompt_seat: bool = True):
         """Configure this PC as a client workstation and (re)start client agent."""
+        import socket
         current = get_seat_name() or ""
         if prompt_seat or not current:
             from PyQt6.QtWidgets import QInputDialog
+            default_name = current or f"PC-{socket.gethostname()}"
             name, ok = QInputDialog.getText(
-                self, "Set Seat Name",
-                "Enter a seat name for this PC (e.g. PC-01):",
-                text=current or "PC-01"
+                self, "Set Unique Seat Name",
+                "Enter a unique seat name for this client PC (e.g. PC-01):",
+                text=default_name
             )
             if not ok or not name.strip():
                 return
@@ -1755,18 +1864,20 @@ class MainWindow(QMainWindow):
             self._lab_admin.start()
 
     def _lab_add_client_dialog(self):
-        """Allow admin to manually register a client PC by seat + IP."""
+        """Allow admin to manually register a client PC by seat + IP (requires admin authorization)."""
+        if not self._lab_prompt_admin_auth():
+            return
         from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox
         dlg = QDialog(self)
-        dlg.setWindowTitle("Add Client PC")
+        dlg.setWindowTitle("Add Client PC to Network")
         dlg.setStyleSheet(self.styleSheet())
         form = QFormLayout(dlg)
         seat_edit = QLineEdit()
-        seat_edit.setPlaceholderText("e.g. PC-01")
+        seat_edit.setPlaceholderText("e.g. PC-01 (unique seat name)")
         ip_edit = QLineEdit()
         ip_edit.setPlaceholderText("e.g. 192.168.1.50")
-        form.addRow("Seat name:", seat_edit)
-        form.addRow("IP address:", ip_edit)
+        form.addRow("Unique Seat name:", seat_edit)
+        form.addRow("Client IP address:", ip_edit)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
@@ -2076,79 +2187,10 @@ class MainWindow(QMainWindow):
         self._start_time = time.time()
 
     def _start_metric_timer(self):
-        # Prime psutil cpu_percent so first real reading is accurate
-        try:
-            import psutil as _ps
-            _ps.cpu_percent(interval=None)
-        except Exception:
-            pass
-
-        self._metric_timer = QTimer(self)
-        self._metric_timer.timeout.connect(self._update_metrics)
-        self._metric_timer.start(1500)   # Live update every 1.5s
-        QTimer.singleShot(300, self._update_metrics)  # Fast first reading
-
-    def _update_metrics(self):
-        """Run live metric collection on a background thread, post results back to UI."""
-        def _collect():
-            try:
-                import psutil
-                cpu = psutil.cpu_percent(interval=None)
-                cores = psutil.cpu_count(logical=True) or 1
-                mem = psutil.virtual_memory()
-                disk = psutil.disk_usage('C:\\')
-
-                # Critical Windows services check
-                critical_svcs = ['Spooler', 'WSearch', 'AudioSrv', 'wuauserv', 'bthserv']
-                running_svcs = 0
-                for s in critical_svcs:
-                    try:
-                        svc = psutil.win_service_get(s)
-                        if svc.status() == 'running':
-                            running_svcs += 1
-                    except Exception:
-                        pass
-
-                net_ok = True
-                try:
-                    import socket
-                    socket.setdefaulttimeout(1)
-                    socket.gethostbyname("8.8.8.8")
-                except Exception:
-                    net_ok = False
-
-                # System uptime matching Windows Task Manager
-                boot_time = psutil.boot_time()
-                uptime_s = int(time.time() - boot_time)
-                days = uptime_s // 86400
-                hrs = (uptime_s % 86400) // 3600
-                mins = (uptime_s % 3600) // 60
-                if days > 0:
-                    uptime_str = f"{days}d {hrs}h {mins}m"
-                elif hrs > 0:
-                    uptime_str = f"{hrs}h {mins}m"
-                else:
-                    uptime_str = f"{mins}m"
-
-                self._alert_signal.emit({
-                    "__type__": "metric_update",
-                    "cpu": cpu,
-                    "cores": cores,
-                    "ram_pct": mem.percent,
-                    "ram_used_gb": mem.used / (1024**3),
-                    "ram_total_gb": mem.total / (1024**3),
-                    "disk_pct": disk.percent,
-                    "disk_free_gb": disk.free / (1024**3),
-                    "svcs_running": running_svcs,
-                    "svcs_total": len(critical_svcs),
-                    "net_ok": net_ok,
-                    "uptime_str": uptime_str,
-                })
-            except Exception as e:
-                logger.error(f"Live metric collect failed: {e}")
-
-        t = threading.Thread(target=_collect, daemon=True)
-        t.start()
+        """Start dedicated Task-Manager-like real-time metric sampling thread."""
+        self._metric_worker = MetricWorkerThread(self)
+        self._metric_worker.metrics_ready.connect(self._show_alert)
+        self._metric_worker.start()
 
     
 

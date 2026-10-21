@@ -1212,13 +1212,21 @@ PC_LAB_ERRORS = {
         "detection": {"type": "manual"},
         "repair_id": "lab_resync_clock_ntp", "user_permission_required": True,
     },
+    "temp_files_overflow": {
+        "id": "temp_files_overflow", "name": "Excessive Temporary Files & System Cache Clutter",
+        "severity": HIGH, "category": "Storage & Performance",
+        "description": "Temporary folders and application caches have accumulated gigabytes of stale files, slowing down disk I/O and consuming drive space.",
+        "technical": "Excessive file count and size detected in %TEMP% and C:\\Windows\\Temp",
+        "detection": {"type": "manual"},
+        "repair_id": "purge_temp_cache_files", "user_permission_required": True,
+    },
     "lab_disk_full_student_temps": {
         "id": "lab_disk_full_student_temps", "name": "Disk Full — Accumulated Temp & Cache Files",
         "severity": HIGH, "category": "PC Lab",
         "description": "C: drive is critically low on space due to accumulated build artifacts, temp files, and download caches.",
         "technical": "Temp and cache directories consuming critical drive space",
         "detection": {"type": "manual"},
-        "repair_id": "lab_purge_student_temp_files", "user_permission_required": True,
+        "repair_id": "purge_temp_cache_files", "user_permission_required": True,
     },
     "lab_display_projector_blackscreen": {
         "id": "lab_display_projector_blackscreen", "name": "External Display / Projector Black Screen",

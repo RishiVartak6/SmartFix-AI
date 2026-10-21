@@ -47,7 +47,15 @@ def save_lab_config(cfg: Dict[str, Any]):
 
 
 def get_seat_name() -> str:
-    return load_lab_config().get("seat_name", "")
+    seat = load_lab_config().get("seat_name", "").strip()
+    if not seat:
+        import socket
+        try:
+            h = socket.gethostname().strip()
+            seat = f"PC-{h.upper()}"
+        except Exception:
+            seat = "PC-01"
+    return seat
 
 
 def set_seat_name(name: str):
