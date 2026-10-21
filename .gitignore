@@ -26,6 +26,7 @@ dist/
 *.db
 *.sqlite3
 data/learned_errors.json
+data/lab_config.json
 data/*.db
 
 # Logs

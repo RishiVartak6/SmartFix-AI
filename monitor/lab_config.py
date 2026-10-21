@@ -66,6 +66,53 @@ def set_mode(mode: str):
     save_lab_config(cfg)
 
 
+# ── Authentication & Security ──────────────────────────────────────────────────
+import hashlib
+
+DEFAULT_PASSKEY = "admin123"
+
+
+def _hash_passkey(passkey: str) -> str:
+    return hashlib.sha256(passkey.strip().encode("utf-8")).hexdigest()
+
+
+def get_admin_passkey_hash() -> str:
+    """Retrieve or initialize the admin passkey hash."""
+    cfg = load_lab_config()
+    if "admin_passkey_hash" not in cfg:
+        default_hash = _hash_passkey(DEFAULT_PASSKEY)
+        cfg["admin_passkey_hash"] = default_hash
+        save_lab_config(cfg)
+        return default_hash
+    return cfg["admin_passkey_hash"]
+
+
+def set_admin_passkey(new_passkey: str):
+    """Set and persist a new admin passkey."""
+    cfg = load_lab_config()
+    cfg["admin_passkey_hash"] = _hash_passkey(new_passkey)
+    save_lab_config(cfg)
+
+
+def verify_admin_passkey(passkey: str) -> bool:
+    """Check if the provided passkey matches the stored passkey."""
+    if not passkey:
+        return False
+    return _hash_passkey(passkey) == get_admin_passkey_hash()
+
+
+def get_auth_token() -> str:
+    """Generate auth token for signing admin-to-client commands."""
+    return get_admin_passkey_hash()
+
+
+def verify_auth_token(token: str) -> bool:
+    """Verify an auth token sent from an admin."""
+    if not token:
+        return False
+    return token == get_admin_passkey_hash()
+
+
 def get_local_ip() -> str:
     """Get this machine's LAN IP."""
     try:

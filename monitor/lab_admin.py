@@ -22,7 +22,8 @@ from monitor.lab_config import (
     MSG_PING, MSG_PONG, MSG_GET_STATUS, MSG_STATUS,
     MSG_REPAIR, MSG_REPAIR_RESULT,
     get_known_clients, save_known_clients,
-    send_message, recv_message, make_message, parse_message
+    send_message, recv_message, make_message, parse_message,
+    get_auth_token
 )
 
 
@@ -298,7 +299,10 @@ class LabAdminManager:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(10)
             sock.connect((client.ip, client.port))
-            send_message(sock, MSG_REPAIR, {"error_id": error_id})
+            send_message(sock, MSG_REPAIR, {
+                "error_id": error_id,
+                "auth_token": get_auth_token(),
+            })
             resp = recv_message(sock, timeout=30)
             sock.close()
             if resp and resp.get("type") == MSG_REPAIR_RESULT:

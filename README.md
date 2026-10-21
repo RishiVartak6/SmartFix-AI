@@ -41,24 +41,33 @@ SmartFix AI is built to operate both as an **individual workstation guardian** a
 
 ---
 
-## 🏫 Setting Up a College Computer Lab (1 Admin + N Clients)
+## 🖥️ Computer Lab Monitor (Dynamic Admin & Workstation Setup)
 
-SmartFix AI uses the **exact same installer** on all computers in the lab:
+SmartFix AI uses the **exact same installer** across all computers in the local network:
 
-1. **Teacher PC (Admin)**:
-   - Open SmartFix AI → Go to **🖥 Lab Monitor** in sidebar.
-   - Click **`🎓 Set as Admin (Teacher PC)`**.
-   - The dashboard transforms into the Lab Command Center, listening for student PCs.
+1. **Any PC can be Admin (Central Controller)**:
+   - Go to **🖥 Lab Monitor** in the sidebar.
+   - Click **`🛡 Set as Admin (Central Controller)`** or use **`⇄ Switch Role`**.
+   - Authenticate with the Admin Passkey (default: `admin123`).
+   - The dashboard opens the Lab Central Controller, listening for workstations and displaying live telemetry.
 
-2. **Student PCs (Clients)**:
-   - Open SmartFix AI on each student PC → Go to **🖥 Lab Monitor**.
-   - Click **`💻 Set as Client (Student PC)`**.
-   - Enter seat name (`PC-01`, `PC-02`, etc.).
-   - The student PC automatically broadcasts its presence on the LAN (UDP 7772).
+2. **Any PC can be a Client (Workstation)**:
+   - Go to **🖥 Lab Monitor** in the sidebar.
+   - Click **`💻 Set as Client (Workstation)`**.
+   - Enter the seat name (`PC-01`, `PC-02`, etc.).
+   - The workstation automatically broadcasts its presence and telemetry on the LAN (UDP 7772).
 
-3. **Remote Repair**:
-   - If any student PC has an error, its card turns red on the Teacher's screen.
-   - The teacher clicks **`⚡ Fix`** on the Admin dashboard to trigger a remote administrative repair over TCP 7771.
+3. **Dynamic Role Switching & Demotion**:
+   - An Admin PC can switch back to Client mode at any time using **`💻 Switch this PC to Client`** or **`⇄ Switch Role`**.
+   - A Client PC can be promoted to Admin anytime by clicking **`🛡 Promote this PC to Admin`** and entering the Admin Passkey.
+
+4. **Passkey Management & Authentication**:
+   - Remote repairs and admin elevation are secured with SHA-256 passkey verification.
+   - Change the passkey at any time via the **`🔑 Passkey`** button on the Lab Monitor header.
+
+5. **Remote Diagnostic & One-Click Repair**:
+   - If any workstation PC encounters an issue, its card flags the error on the Admin's screen.
+   - The administrator clicks **`🔧 Fix Remotely`** to execute an authenticated administrative repair over TCP 7771.
 
 ---
 

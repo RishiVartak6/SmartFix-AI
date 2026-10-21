@@ -22,7 +22,8 @@ from monitor.lab_config import (
     LAB_PORT, MSG_PING, MSG_PONG, MSG_GET_STATUS, MSG_STATUS,
     MSG_REPAIR, MSG_REPAIR_RESULT,
     get_seat_name, get_local_ip,
-    send_message, recv_message, make_message, parse_message
+    send_message, recv_message, make_message, parse_message,
+    verify_auth_token
 )
 
 logger = logging.getLogger("smartfix.lab_agent")
@@ -67,8 +68,10 @@ class LabClientAgent:
         if self._server:
             try:
                 self._server.shutdown()
+                self._server.server_close()
             except Exception:
                 pass
+            self._server = None
         logger.info("[LabAgent] Stopped")
 
     def update_errors(self, errors: List[Dict]):
@@ -126,6 +129,17 @@ class LabClientAgent:
             send_message(sock, MSG_STATUS, self._build_status())
 
         elif msg_type == MSG_REPAIR:
+            auth_token = payload.get("auth_token", "")
+            if not verify_auth_token(auth_token):
+                logger.warning(f"[LabAgent] Unauthorized repair request rejected from {sock.getpeername()}")
+                send_message(sock, MSG_REPAIR_RESULT, {
+                    "error_id": payload.get("error_id", ""),
+                    "success": False,
+                    "message": "Authentication failed: Invalid admin passkey token.",
+                    "seat": get_seat_name(),
+                })
+                return
+
             error_id = payload.get("error_id", "")
             result   = self._execute_repair(error_id)
             send_message(sock, MSG_REPAIR_RESULT, {
@@ -191,6 +205,9 @@ class LabClientAgent:
                 sock.sendto(data, ("<broadcast>", BROADCAST_PORT))
             except Exception as ex:
                 logger.debug(f"[LabAgent] Broadcast error: {ex}")
-            time.sleep(BROADCAST_INTERVAL)
+            for _ in range(BROADCAST_INTERVAL):
+                if not self._running:
+                    break
+                time.sleep(1)
 
         sock.close()

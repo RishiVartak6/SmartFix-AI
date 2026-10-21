@@ -43,7 +43,10 @@ import webbrowser
 
 from monitor.ai_dialog import AIAssistantDialog
 from monitor.demo_mode import DemoController, DEMO_SCENARIOS, DEMO_LIST
-from monitor.lab_config import get_mode, set_mode, get_seat_name, set_seat_name, get_local_ip, LAB_PORT
+from monitor.lab_config import (
+    get_mode, set_mode, get_seat_name, set_seat_name, get_local_ip, LAB_PORT,
+    verify_admin_passkey, set_admin_passkey, DEFAULT_PASSKEY
+)
 from monitor.lab_agent import LabClientAgent
 from monitor.lab_admin import LabAdminManager, ClientInfo
 
@@ -1262,6 +1265,28 @@ class MainWindow(QMainWindow):
         hdr.addWidget(title)
         hdr.addStretch()
 
+        # Switch role button (allows switching between Admin and Client anytime)
+        self._lab_switch_role_btn = QPushButton("⇄ Switch Role")
+        self._lab_switch_role_btn.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT1}; border: 1px solid {BORDER}; "
+            f"border-radius: 6px; padding: 5px 12px; font-size: 12px; font-weight: 500;"
+        )
+        self._lab_switch_role_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._lab_switch_role_btn.setToolTip("Switch this PC between Admin and Client mode")
+        self._lab_switch_role_btn.clicked.connect(self._lab_switch_role_dialog)
+        hdr.addWidget(self._lab_switch_role_btn)
+
+        # Passkey settings button
+        self._lab_passkey_btn = QPushButton("🔑 Passkey")
+        self._lab_passkey_btn.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT2}; border: 1px solid {BORDER}; "
+            f"border-radius: 6px; padding: 5px 12px; font-size: 12px;"
+        )
+        self._lab_passkey_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._lab_passkey_btn.setToolTip("Manage Admin Authentication Passkey")
+        self._lab_passkey_btn.clicked.connect(self._lab_change_passkey_dialog)
+        hdr.addWidget(self._lab_passkey_btn)
+
         # Mode badge
         self._lab_mode_badge = QLabel("Mode: unset")
         self._lab_mode_badge.setStyleSheet(
@@ -1285,8 +1310,8 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(setup_title)
 
         setup_desc = QLabel(
-            "Choose a role for this PC. The same SmartFix installer runs on every machine in the network. "
-            "One PC becomes the Admin (Central Controller) and the rest are Clients (Managed Workstations)."
+            "Choose a role for this PC. Any computer in the lab can become the Admin (Central Controller) "
+            "with the Admin Passkey, or a Client (Managed Workstation). Roles can be switched at any time."
         )
         setup_desc.setStyleSheet(f"color: {TEXT2}; font-size: 12px; background: transparent; border: none;")
         setup_desc.setWordWrap(True)
@@ -1301,7 +1326,7 @@ class MainWindow(QMainWindow):
             f"border-radius: 8px; font-weight: bold; font-size: 13px;"
         )
         self._btn_admin_mode.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_admin_mode.clicked.connect(lambda: self._lab_set_admin_mode())
+        self._btn_admin_mode.clicked.connect(lambda: self._lab_set_admin_mode(skip_auth=False))
         btn_row.addWidget(self._btn_admin_mode)
 
         self._btn_client_mode = QPushButton("💻  Set as Client (Managed Workstation)")
@@ -1310,7 +1335,7 @@ class MainWindow(QMainWindow):
             f"border-radius: 8px; font-weight: bold; font-size: 13px;"
         )
         self._btn_client_mode.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_client_mode.clicked.connect(lambda: self._lab_set_client_mode())
+        self._btn_client_mode.clicked.connect(lambda: self._lab_set_client_mode(prompt_seat=True))
         btn_row.addWidget(self._btn_client_mode)
         btn_row.addStretch()
         setup_layout.addLayout(btn_row)
@@ -1327,6 +1352,16 @@ class MainWindow(QMainWindow):
         self._lab_client_count_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 13px;")
         admin_bar.addWidget(self._lab_client_count_lbl)
         admin_bar.addStretch()
+
+        demote_btn = QPushButton("💻 Switch this PC to Client")
+        demote_btn.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT1}; padding: 6px 14px; border: 1px solid {BORDER}; "
+            f"border-radius: 6px; font-size: 12px;"
+        )
+        demote_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        demote_btn.setToolTip("Switch this PC back to a client workstation")
+        demote_btn.clicked.connect(lambda: self._lab_set_client_mode(prompt_seat=True))
+        admin_bar.addWidget(demote_btn)
 
         add_btn = QPushButton("+ Add PC manually")
         add_btn.setStyleSheet(
@@ -1364,7 +1399,7 @@ class MainWindow(QMainWindow):
         )
         csl = QVBoxLayout(self._lab_client_status)
         csl.setContentsMargins(24, 18, 24, 18)
-        csl.setSpacing(6)
+        csl.setSpacing(8)
         self._lab_client_seat_lbl = QLabel("Seat: —")
         self._lab_client_seat_lbl.setStyleSheet(f"color: {TEXT1}; font-size: 16px; font-weight: bold; background: transparent; border: none;")
         csl.addWidget(self._lab_client_seat_lbl)
@@ -1374,6 +1409,34 @@ class MainWindow(QMainWindow):
         self._lab_client_agent_lbl = QLabel("Agent: starting…")
         self._lab_client_agent_lbl.setStyleSheet(f"color: {GREEN}; font-size: 12px; background: transparent; border: none;")
         csl.addWidget(self._lab_client_agent_lbl)
+
+        # Client action buttons (Promote to Admin & Rename)
+        client_act_row = QHBoxLayout()
+        client_act_row.setSpacing(10)
+
+        promote_btn = QPushButton("🛡 Promote this PC to Admin")
+        promote_btn.setStyleSheet(
+            f"background: {ACCENT}; color: white; padding: 7px 16px; border: none; "
+            f"border-radius: 6px; font-weight: bold; font-size: 12px;"
+        )
+        promote_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        promote_btn.setToolTip("Authenticate and promote this machine to Central Controller")
+        promote_btn.clicked.connect(lambda: self._lab_set_admin_mode(skip_auth=False))
+        client_act_row.addWidget(promote_btn)
+
+        rename_seat_btn = QPushButton("✏ Rename Seat")
+        rename_seat_btn.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT1}; padding: 7px 14px; border: 1px solid {BORDER}; "
+            f"border-radius: 6px; font-size: 12px;"
+        )
+        rename_seat_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        rename_seat_btn.setToolTip("Change the workstation name broadcast to Admin")
+        rename_seat_btn.clicked.connect(self._lab_rename_seat_dialog)
+        client_act_row.addWidget(rename_seat_btn)
+
+        client_act_row.addStretch()
+        csl.addLayout(client_act_row)
+
         cp_v.addWidget(self._lab_client_status)
         self._lab_client_panel.setVisible(False)
         layout.addWidget(self._lab_client_panel)
@@ -1381,8 +1444,218 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         return page
 
-    def _lab_set_admin_mode(self):
-        """Configure this PC as Admin and (re)start the admin manager."""
+    def _lab_prompt_admin_auth(self) -> bool:
+        """Prompt for admin passkey before allowing switch to Admin role."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QPushButton
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Admin Authentication")
+        dlg.setFixedWidth(400)
+        dlg.setStyleSheet(f"""
+            QDialog {{ background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 12px; }}
+            QLabel {{ color: {TEXT1}; background: transparent; }}
+            QLineEdit {{
+                background: {BG_MAIN}; color: {TEXT1}; border: 1px solid {BORDER};
+                border-radius: 6px; padding: 8px 12px; font-size: 13px;
+            }}
+            QLineEdit:focus {{ border: 1px solid {ACCENT}; }}
+        """)
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(24, 20, 24, 20)
+        v.setSpacing(14)
+
+        icon_lbl = QLabel("🛡  Admin Authentication Required")
+        icon_lbl.setStyleSheet(f"color: {ACCENT}; font-size: 16px; font-weight: bold;")
+        v.addWidget(icon_lbl)
+
+        info_lbl = QLabel("Enter the Lab Admin passkey to control the lab from this PC.\n(Default passkey: admin123)")
+        info_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 12px;")
+        info_lbl.setWordWrap(True)
+        v.addWidget(info_lbl)
+
+        pwd_edit = QLineEdit()
+        pwd_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        pwd_edit.setPlaceholderText("Enter admin passkey…")
+        v.addWidget(pwd_edit)
+
+        err_lbl = QLabel("")
+        err_lbl.setStyleSheet(f"color: {RED}; font-size: 11px;")
+        err_lbl.setVisible(False)
+        v.addWidget(err_lbl)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(f"background: {BG_CARD2}; color: {TEXT2}; border: 1px solid {BORDER}; border-radius: 6px; padding: 8px 16px; font-size: 12px;")
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.clicked.connect(dlg.reject)
+        btns.addWidget(cancel_btn)
+
+        submit_btn = QPushButton("Authorize Admin")
+        submit_btn.setStyleSheet(f"background: {ACCENT}; color: white; border: none; border-radius: 6px; padding: 8px 18px; font-weight: bold; font-size: 12px;")
+        submit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def try_auth():
+            val = pwd_edit.text()
+            if verify_admin_passkey(val):
+                dlg.accept()
+            else:
+                err_lbl.setText("⚠ Incorrect passkey. Access denied.")
+                err_lbl.setVisible(True)
+                pwd_edit.selectAll()
+                pwd_edit.setFocus()
+
+        submit_btn.clicked.connect(try_auth)
+        pwd_edit.returnPressed.connect(try_auth)
+        btns.addWidget(submit_btn)
+        v.addLayout(btns)
+
+        res = dlg.exec()
+        return res == QDialog.DialogCode.Accepted
+
+    def _lab_change_passkey_dialog(self):
+        """Allow changing the lab admin passkey."""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QHBoxLayout, QPushButton, QMessageBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Manage Admin Passkey")
+        dlg.setFixedWidth(400)
+        dlg.setStyleSheet(f"""
+            QDialog {{ background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 12px; }}
+            QLabel {{ color: {TEXT1}; background: transparent; }}
+            QLineEdit {{
+                background: {BG_MAIN}; color: {TEXT1}; border: 1px solid {BORDER};
+                border-radius: 6px; padding: 8px 12px; font-size: 13px;
+            }}
+            QLineEdit:focus {{ border: 1px solid {ACCENT}; }}
+        """)
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(24, 20, 24, 20)
+        v.setSpacing(10)
+
+        icon_lbl = QLabel("🔑  Lab Admin Passkey")
+        icon_lbl.setStyleSheet(f"color: {ACCENT}; font-size: 16px; font-weight: bold;")
+        v.addWidget(icon_lbl)
+
+        info_lbl = QLabel("Update the passkey used to grant Admin permissions and authenticate remote commands across the lab.")
+        info_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 12px;")
+        info_lbl.setWordWrap(True)
+        v.addWidget(info_lbl)
+
+        v.addWidget(QLabel("Current Passkey:"))
+        curr_edit = QLineEdit()
+        curr_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        curr_edit.setPlaceholderText("Current passkey (default is admin123)")
+        v.addWidget(curr_edit)
+
+        v.addWidget(QLabel("New Passkey:"))
+        new_edit = QLineEdit()
+        new_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        new_edit.setPlaceholderText("At least 4 characters")
+        v.addWidget(new_edit)
+
+        v.addWidget(QLabel("Confirm New Passkey:"))
+        conf_edit = QLineEdit()
+        conf_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        conf_edit.setPlaceholderText("Re-type new passkey")
+        v.addWidget(conf_edit)
+
+        err_lbl = QLabel("")
+        err_lbl.setStyleSheet(f"color: {RED}; font-size: 11px;")
+        err_lbl.setVisible(False)
+        v.addWidget(err_lbl)
+
+        btns = QHBoxLayout()
+        btns.setSpacing(10)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet(f"background: {BG_CARD2}; color: {TEXT2}; border: 1px solid {BORDER}; border-radius: 6px; padding: 8px 16px; font-size: 12px;")
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.clicked.connect(dlg.reject)
+        btns.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Save Passkey")
+        save_btn.setStyleSheet(f"background: {ACCENT}; color: white; border: none; border-radius: 6px; padding: 8px 18px; font-weight: bold; font-size: 12px;")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        def try_save():
+            curr = curr_edit.text()
+            newp = new_edit.text().strip()
+            conf = conf_edit.text().strip()
+
+            if not verify_admin_passkey(curr):
+                err_lbl.setText("⚠ Current passkey is incorrect.")
+                err_lbl.setVisible(True)
+                curr_edit.selectAll()
+                curr_edit.setFocus()
+                return
+
+            if len(newp) < 4:
+                err_lbl.setText("⚠ New passkey must be at least 4 characters.")
+                err_lbl.setVisible(True)
+                new_edit.setFocus()
+                return
+
+            if newp != conf:
+                err_lbl.setText("⚠ New passkeys do not match.")
+                err_lbl.setVisible(True)
+                conf_edit.selectAll()
+                conf_edit.setFocus()
+                return
+
+            set_admin_passkey(newp)
+            dlg.accept()
+
+        save_btn.clicked.connect(try_save)
+        btns.addWidget(save_btn)
+        v.addLayout(btns)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            QMessageBox.information(self, "Passkey Updated", "Admin passkey has been successfully updated!")
+
+    def _lab_switch_role_dialog(self):
+        """Allow switching between Admin and Client roles at any time."""
+        current = self._lab_mode
+        if current == "admin":
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                "Switch to Client Mode",
+                "Switch this PC from Admin Controller to a Managed Client Workstation?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._lab_set_client_mode(prompt_seat=True)
+        else:
+            self._lab_set_admin_mode(skip_auth=False)
+
+    def _lab_rename_seat_dialog(self):
+        """Allow renaming this client workstation's seat name."""
+        from PyQt6.QtWidgets import QInputDialog
+        curr = get_seat_name() or "PC-01"
+        name, ok = QInputDialog.getText(
+            self, "Rename Seat",
+            "Enter new seat name for this PC:",
+            text=curr
+        )
+        if ok and name.strip():
+            new_seat = name.strip()
+            set_seat_name(new_seat)
+            self._lab_client_seat_lbl.setText(f"Seat: {new_seat}")
+            if self._lab_agent:
+                self._lab_agent.seat = new_seat
+
+    def _lab_set_admin_mode(self, skip_auth: bool = False):
+        """Configure this PC as Admin (with authentication) and (re)start the admin manager."""
+        if not skip_auth:
+            if not self._lab_prompt_admin_auth():
+                return
+
+        # If currently running client agent, stop it cleanly first
+        if self._lab_agent:
+            try:
+                self._lab_agent.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping lab agent: {e}")
+            self._lab_agent = None
+
         set_mode("admin")
         self._lab_mode = "admin"
         self._lab_setup_card.setVisible(False)
@@ -1395,30 +1668,42 @@ class MainWindow(QMainWindow):
         )
         self._ensure_lab_admin()
 
-    def _lab_set_client_mode(self):
-        """Prompt for seat name and configure this PC as a client."""
-        from PyQt6.QtWidgets import QInputDialog
+    def _lab_set_client_mode(self, prompt_seat: bool = True):
+        """Configure this PC as a client workstation and (re)start client agent."""
         current = get_seat_name() or ""
-        name, ok = QInputDialog.getText(
-            self, "Set Seat Name",
-            "Enter a seat name for this PC (e.g. PC-01):",
-            text=current
-        )
-        if ok and name.strip():
-            set_seat_name(name.strip())
-            set_mode("client")
-            self._lab_mode = "client"
-            self._lab_setup_card.setVisible(False)
-            self._lab_admin_panel.setVisible(False)
-            self._lab_client_panel.setVisible(True)
-            self._lab_mode_badge.setText("Mode: Client")
-            self._lab_mode_badge.setStyleSheet(
-                f"background: {GREEN}20; color: {GREEN}; border: 1px solid {GREEN}50; "
-                f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
+        if prompt_seat or not current:
+            from PyQt6.QtWidgets import QInputDialog
+            name, ok = QInputDialog.getText(
+                self, "Set Seat Name",
+                "Enter a seat name for this PC (e.g. PC-01):",
+                text=current or "PC-01"
             )
-            self._lab_client_seat_lbl.setText(f"Seat: {name.strip()}")
-            self._lab_client_ip_lbl.setText(f"IP: {get_local_ip()}  |  Port: {LAB_PORT}")
-            self._ensure_lab_agent()
+            if not ok or not name.strip():
+                return
+            current = name.strip()
+            set_seat_name(current)
+
+        # If currently running admin manager, stop it cleanly first
+        if self._lab_admin:
+            try:
+                self._lab_admin.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping lab admin: {e}")
+            self._lab_admin = None
+
+        set_mode("client")
+        self._lab_mode = "client"
+        self._lab_setup_card.setVisible(False)
+        self._lab_admin_panel.setVisible(False)
+        self._lab_client_panel.setVisible(True)
+        self._lab_mode_badge.setText("Mode: Client")
+        self._lab_mode_badge.setStyleSheet(
+            f"background: {GREEN}20; color: {GREEN}; border: 1px solid {GREEN}50; "
+            f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
+        )
+        self._lab_client_seat_lbl.setText(f"Seat: {current}")
+        self._lab_client_ip_lbl.setText(f"IP: {get_local_ip()}  |  Port: {LAB_PORT}")
+        self._ensure_lab_agent()
 
     def _ensure_lab_agent(self):
         """Start the client agent if not already running."""
@@ -1658,24 +1943,11 @@ class MainWindow(QMainWindow):
         mode = get_mode()
         self._lab_mode = mode
         if mode == "admin":
-            self._lab_set_admin_mode()
+            self._lab_set_admin_mode(skip_auth=True)
         elif mode == "client":
             seat = get_seat_name()
             if seat:
-                set_mode("client")
-                self._lab_mode = "client"
-                # Update client panel without re-prompting
-                self._lab_setup_card.setVisible(False)
-                self._lab_client_panel.setVisible(True)
-                self._lab_admin_panel.setVisible(False)
-                self._lab_mode_badge.setText("Mode: Client")
-                self._lab_mode_badge.setStyleSheet(
-                    f"background: {GREEN}20; color: {GREEN}; border: 1px solid {GREEN}50; "
-                    f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
-                )
-                self._lab_client_seat_lbl.setText(f"Seat: {seat}")
-                self._lab_client_ip_lbl.setText(f"IP: {get_local_ip()}  |  Port: {LAB_PORT}")
-                self._ensure_lab_agent()
+                self._lab_set_client_mode(prompt_seat=False)
 
     def _setup_tray(self):
         try:
