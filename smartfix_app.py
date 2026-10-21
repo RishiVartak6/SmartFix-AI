@@ -1762,13 +1762,27 @@ class MainWindow(QMainWindow):
             logger.error(f"Tray setup failed: {e}")
 
     def _tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.show_and_raise()
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            if self.isVisible() and not self.isMinimized():
+                self.show_and_raise()
+            else:
+                self.show_and_raise()
 
     def show_and_raise(self):
+        self.showNormal()
         self.show()
         self.raise_()
         self.activateWindow()
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
 
     
 
@@ -2114,7 +2128,16 @@ def main():
     app.setFont(QFont("Segoe UI", 10))
 
     window = MainWindow()
-    window.show()
+    window.showNormal()
+    window.raise_()
+    window.activateWindow()
+    try:
+        import ctypes
+        hwnd = int(window.winId())
+        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
 
     sys.exit(app.exec())
 
