@@ -39,6 +39,7 @@ UninstallDisplayName      = {#MyAppName}
 CloseApplications         = yes
 RestartIfNeededByRun      = no
 ChangesEnvironment        = yes
+ArchitecturesInstallIn64BitMode = x64compatible
 ; Minimum Windows 10
 MinVersion                = 10.0.17763
 
@@ -83,13 +84,13 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File ""{app}\install_helper.ps1"" -InstallDir ""{app}"""; \
     StatusMsg: "Installing Python, PyQt6, Ollama, llama3 model and Lab Monitor firewall rules... (may take 10-30 min)"; \
-    Flags: runascurrentuser waituntilterminated; \
+    Flags: waituntilterminated; \
     Description: "Install all dependencies (Python, PyQt6, Ollama AI, llama3 model)"
 
 ; ── Launch after install ───────────────────────────────────────────────────────
 Filename: "{app}\{#MyAppExeName}"; \
     Description: "Launch {#MyAppName} now"; \
-    Flags: nowait postinstall skipifsilent
+    Flags: nowait postinstall skipifsilent shellexec
 
 [UninstallRun]
 Filename: "powershell.exe"; \
