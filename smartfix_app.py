@@ -1957,7 +1957,6 @@ class MainWindow(QMainWindow):
                 row.addWidget(lbl)
 
         # Error count badge
-        # Error count badge
         if err_count > 0:
             err_badge = QLabel(f"⚠ {err_count} error{'s' if err_count != 1 else ''}")
             err_badge.setStyleSheet(
