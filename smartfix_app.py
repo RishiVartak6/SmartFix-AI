@@ -44,6 +44,9 @@ import webbrowser
 
 from monitor.ai_dialog import AIAssistantDialog
 from monitor.demo_mode import DemoController, DEMO_SCENARIOS, DEMO_LIST
+from monitor.lab_config import get_mode, set_mode, get_seat_name, set_seat_name, get_local_ip, LAB_PORT
+from monitor.lab_agent import LabClientAgent
+from monitor.lab_admin import LabAdminManager, ClientInfo
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -323,7 +326,7 @@ class RepairDialog(QDialog):
         self.worker     = None
 
         self.setWindowTitle("SmartFix — Repairing")
-        self.setFixedSize(480, 320)
+        self.setMinimumSize(520, 400)
         self.setStyleSheet(f"""
             QDialog {{ background: {BG_CARD}; }}
             QLabel  {{ background: transparent; border: none; }}
@@ -334,277 +337,10 @@ class RepairDialog(QDialog):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # Top bar
-        top = QFrame()
-        top.setFixedHeight(52)
-        top.setStyleSheet(f"background: {BG_SIDEBAR}; border-bottom: 1px solid {BORDER};")
-        top_l = QHBoxLayout(top)
-        top_l.setContentsMargins(20, 0, 20, 0)
-
-        brand = QLabel("SmartFix")
-        brand.setStyleSheet(f"color: {TEXT3}; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;")
-        top_l.addWidget(brand)
-        top_l.addStretch()
-
-        self.title_lbl = QLabel("Repairing...")
-        self.title_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 11px;")
-        top_l.addWidget(self.title_lbl)
-        layout.addWidget(top)
-
-        # Progress bar (below top bar)
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 0)
-        self.progress.setFixedHeight(2)
-        self.progress.setTextVisible(False)
-        self.progress.setStyleSheet(f"""
-            QProgressBar {{ background: {BORDER}; border: none; }}
-            QProgressBar::chunk {{ background: {ACCENT}; }}
-        """)
-        layout.addWidget(self.progress)
-
-        # Body
-        body = QWidget()
-        body_l = QVBoxLayout(body)
-        body_l.setContentsMargins(24, 20, 24, 20)
-        body_l.setSpacing(12)
-
-        err_name = QLabel(self.error_info.get("name", ""))
-        err_name.setStyleSheet(f"color: {TEXT1}; font-size: 15px; font-weight: 600;")
-        body_l.addWidget(err_name)
-
-        self.log_box = QTextEdit()
-        self.log_box.setReadOnly(True)
-        self.log_box.setPlaceholderText("Running repair...")
-        body_l.addWidget(self.log_box)
-
-        self.result_lbl = QLabel()
-        self.result_lbl.setWordWrap(True)
-        self.result_lbl.setVisible(False)
-        body_l.addWidget(self.result_lbl)
-
-        self.close_btn = QPushButton("Done")
-        self.close_btn.setVisible(False)
-        self.close_btn.setFixedHeight(36)
-        self.close_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {ACCENT}; color: white; border: none;
-                border-radius: 4px; font-weight: 600; font-size: 12px;
-            }}
-            QPushButton:hover {{ background: #6D7EF7; }}
-        """)
-        self.close_btn.clicked.connect(self.accept)
-        body_l.addWidget(self.close_btn, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.addWidget(body)
-
-    def _start_repair(self):
-        self.log_box.append(f"Starting: {self.repair_id}")
-        self.worker = RepairWorker(self.repair_id)
-        self.worker.finished.connect(self._on_repair_done)
-        self.worker.start()
-
-    def _on_repair_done(self, result: dict):
-        success = result.get("success", False)
-        output  = result.get("output", "")[:600]
-        elapsed = result.get("elapsed_seconds", 0)
-
-        self.log_box.append(f"\n{output}\n\nCompleted in {elapsed}s")
-        self.progress.setRange(0, 100)
-        self.progress.setValue(100)
-        self.progress.setStyleSheet(f"""
-            QProgressBar {{ background: {BORDER}; border: none; }}
-            QProgressBar::chunk {{ background: {'#34D399' if success else RED}; }}
-        """)
-
-        log_repair(self.error_info, result)
-
-        if success:
-            self.title_lbl.setText("Repair complete")
-            self.result_lbl.setText("The issue has been resolved.")
-            self.result_lbl.setStyleSheet(f"color: {GREEN}; font-size: 12px; font-weight: 600;")
-        else:
-            self.title_lbl.setText("Repair encountered issues")
-            self.result_lbl.setText("Some steps may need Administrator rights.")
-            self.result_lbl.setStyleSheet(f"color: {ORANGE}; font-size: 12px; font-weight: 600;")
-
-        self.result_lbl.setVisible(True)
-        self.close_btn.setVisible(True)
-
-
-
-class AlertPopup(QDialog):
-    """Minimal notification toast — bottom right. CRITICAL only. One at a time."""
-
-    def __init__(self, error_info: dict, parent=None):
-        super().__init__(parent)
-        self.error_info = error_info
-        self._countdown = 25
-
-        self.setFixedWidth(340)
-        self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
-        )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._build_ui()
-        self._position()
-
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._tick)
-        self._timer.start(1000)
-
-    def _build_ui(self):
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(6, 6, 6, 6)
-
-        card = QFrame()
-        card.setObjectName("toast")
-        card.setStyleSheet(f"""
-            QFrame#toast {{
-                background: {BG_CARD};
-                border: 1px solid {BORDER2};
-                border-radius: 8px;
-            }}
-        """)
-
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(28)
-        shadow.setColor(QColor(0, 0, 0, 140))
-        shadow.setOffset(0, 6)
-        card.setGraphicsEffect(shadow)
-        outer.addWidget(card)
-
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(0, 0, 0, 0)
-        cl.setSpacing(0)
-
-        # Top strip
-        strip = QFrame()
-        strip.setFixedHeight(3)
-        strip.setStyleSheet(f"background: {RED}; border-radius: 8px 8px 0 0; border: none;")
-        cl.addWidget(strip)
-
-        body = QWidget()
-        body_l = QVBoxLayout(body)
-        body_l.setContentsMargins(16, 12, 16, 12)
-        body_l.setSpacing(8)
-
-        # Header
-        hdr = QHBoxLayout()
-        app_lbl = QLabel("SMARTFIX")
-        app_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; background: transparent;")
-        hdr.addWidget(app_lbl)
-        hdr.addStretch()
-        time_lbl = QLabel(datetime.now().strftime("%H:%M"))
-        time_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent;")
-        hdr.addWidget(time_lbl)
-        x_btn = QPushButton("x")
-        x_btn.setFixedSize(16, 16)
-        x_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        x_btn.setStyleSheet(f"QPushButton {{ background: transparent; border: none; color: {TEXT3}; font-size: 10px; margin-left:6px; }} QPushButton:hover {{ color: {TEXT1}; }}")
-        x_btn.clicked.connect(self._ignore)
-        hdr.addWidget(x_btn)
-        body_l.addLayout(hdr)
-
-        # Error name
-        name_lbl = QLabel(self.error_info.get("name", "Critical Error"))
-        name_lbl.setStyleSheet(f"color: {TEXT1}; font-size: 13px; font-weight: 600; background: transparent;")
-        name_lbl.setWordWrap(True)
-        body_l.addWidget(name_lbl)
-
-        cat_lbl = QLabel(f"Critical  ·  {self.error_info.get('category', 'System')}")
-        cat_lbl.setStyleSheet(f"color: {TEXT3}; font-size: 10px; background: transparent;")
-        body_l.addWidget(cat_lbl)
-
-        # Buttons
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-
-        fix_btn = QPushButton("Fix Now")
-        fix_btn.setFixedHeight(30)
-        fix_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {ACCENT}; color: white; border: none;
-                border-radius: 4px; padding: 0 16px;
-                font-weight: 600; font-size: 11px;
-            }}
-            QPushButton:hover {{ background: #6D7EF7; }}
-        """)
-        fix_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        fix_btn.clicked.connect(self._fix)
-        btn_row.addWidget(fix_btn)
-
-        ign_btn = QPushButton("Dismiss")
-        ign_btn.setFixedHeight(30)
-        ign_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; color: {TEXT3};
-                border: 1px solid {BORDER}; border-radius: 4px;
-                padding: 0 12px; font-size: 11px;
-            }}
-            QPushButton:hover {{ color: {TEXT2}; }}
-        """)
-        ign_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        ign_btn.clicked.connect(self._ignore)
-        btn_row.addWidget(ign_btn)
-        btn_row.addStretch()
-        body_l.addLayout(btn_row)
-        cl.addWidget(body)
-
-        # Countdown bar
-        self.countdown_bar = QProgressBar()
-        self.countdown_bar.setRange(0, 25)
-        self.countdown_bar.setValue(25)
-        self.countdown_bar.setFixedHeight(2)
-        self.countdown_bar.setTextVisible(False)
-        self.countdown_bar.setStyleSheet(f"""
-            QProgressBar {{ background: transparent; border: none; }}
-            QProgressBar::chunk {{ background: {BORDER2}; }}
-        """)
-        cl.addWidget(self.countdown_bar)
-
-    def _position(self):
-        screen = QApplication.primaryScreen().availableGeometry()
-        self.adjustSize()
-        tx = screen.right() - self.width() - 16
-        ty = screen.bottom() - self.height() - 16
-        self.move(screen.right() + 40, ty)
-        self.animation = QPropertyAnimation(self, b"pos")
-        self.animation.setDuration(280)
-        self.animation.setStartValue(QPoint(screen.right() + 40, ty))
-        self.animation.setEndValue(QPoint(tx, ty))
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.animation.start()
-
-    def _tick(self):
-        self._countdown -= 1
-        self.countdown_bar.setValue(self._countdown)
-        if self._countdown <= 0:
-            self._ignore()
-
-    def _fix(self):
-        self._timer.stop()
-        self.hide()
-        if self.error_info.get("repair_id") == "unknown_error":
-            dlg = AIAssistantDialog(self.error_info)
-        else:
-            dlg = RepairDialog(self.error_info)
-        dlg.exec()
-        self.close()
-
-    def _ignore(self):
-        self._timer.stop()
-        self.close()
-
-    def _build_ui(self):
-        layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
 
-        
+        # Header
         hdr = QHBoxLayout()
         brand = QLabel("🛡 SmartFix AI")
         brand.setStyleSheet(f"color: {ACCENT}; font-weight: bold; font-size: 15px;")
@@ -612,13 +348,12 @@ class AlertPopup(QDialog):
         hdr.addStretch()
         layout.addLayout(hdr)
 
-        
         div = QFrame()
         div.setFixedHeight(1)
         div.setStyleSheet(f"background: {BORDER};")
         layout.addWidget(div)
 
-        
+        # Title row
         title_row = QHBoxLayout()
         self.status_icon = QLabel("⚙️")
         self.status_icon.setStyleSheet("font-size: 28px;")
@@ -635,9 +370,9 @@ class AlertPopup(QDialog):
         title_row.addLayout(title_col)
         layout.addLayout(title_row)
 
-        
+        # Progress bar
         self.progress = QProgressBar()
-        self.progress.setRange(0, 0)  
+        self.progress.setRange(0, 0)
         self.progress.setFixedHeight(6)
         self.progress.setStyleSheet(f"""
             QProgressBar {{
@@ -652,14 +387,14 @@ class AlertPopup(QDialog):
         """)
         layout.addWidget(self.progress)
 
-        
+        # Log box
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setFixedHeight(100)
+        self.log_box.setFixedHeight(120)
         self.log_box.setPlaceholderText("Running repair scripts…")
         layout.addWidget(self.log_box)
 
-        
+        # Result frame
         self.result_frame = QFrame()
         self.result_frame.setStyleSheet(f"background: {BG_CARD2}; border-radius: 8px; border: 1px solid {BORDER};")
         self.result_frame.setVisible(False)
@@ -672,7 +407,7 @@ class AlertPopup(QDialog):
         res_layout.addWidget(self.result_lbl)
         layout.addWidget(self.result_frame)
 
-        
+        # Close button
         self.close_btn = QPushButton("Close")
         self.close_btn.setVisible(False)
         self.close_btn.setStyleSheet(f"""
@@ -698,13 +433,12 @@ class AlertPopup(QDialog):
 
     def _on_repair_done(self, result: dict):
         success = result.get("success", False)
-        output = result.get("output", "")[:800]
+        output  = result.get("output", "")[:800]
         elapsed = result.get("elapsed_seconds", 0)
 
         self.log_box.append(f"\n[Output]\n{output}")
         self.log_box.append(f"\n[Elapsed: {elapsed}s]")
 
-        
         self.progress.setRange(0, 100)
         self.progress.setValue(100)
         log_repair(self.error_info, result)
@@ -720,7 +454,6 @@ class AlertPopup(QDialog):
             }}
         """)
 
-        
         self.result_frame.setVisible(True)
         if success:
             self.status_icon.setText("✅")
@@ -738,7 +471,6 @@ class AlertPopup(QDialog):
             self.result_lbl.setStyleSheet(f"color: {ORANGE}; font-weight: bold; font-size: 13px;")
 
         self.close_btn.setVisible(True)
-
 
 
 class AlertPopup(QDialog):
@@ -921,11 +653,15 @@ class AlertPopup(QDialog):
     def _fix(self):
         self._timer.stop()
         self.hide()
-        if self.error_info.get("repair_id") == "unknown_error":
-            dlg = AIAssistantDialog(self.error_info)
+        main_win = self.parent()
+        if main_win and hasattr(main_win, "resolve_alert_from_popup"):
+            main_win.resolve_alert_from_popup(self.error_info)
         else:
-            dlg = RepairDialog(self.error_info)
-        dlg.exec()
+            if self.error_info.get("repair_id") == "unknown_error":
+                dlg = AIAssistantDialog(self.error_info, self)
+            else:
+                dlg = RepairDialog(self.error_info, self)
+            dlg.exec()
         self.close()
 
     def _ignore(self):
@@ -955,13 +691,18 @@ class MainWindow(QMainWindow):
         # Prevent popup spam — only 1 popup at a time
         self._popup_visible: bool = False
 
-        
+        # Lab Monitor
+        self._lab_agent: Optional[LabClientAgent] = None
+        self._lab_admin: Optional[LabAdminManager] = None
+        self._lab_mode: str = "unset"   # "admin" | "client" | "unset"
+
         self._alert_signal.connect(self._show_alert)
 
         self._build_ui()
         self._setup_tray()
         self._start_monitor()
         self._start_metric_timer()
+        self._start_lab_services()
 
     
 
@@ -978,13 +719,14 @@ class MainWindow(QMainWindow):
 
         
         self.stack = QStackedWidget()
-        self.stack.addWidget(self._make_dashboard())   
-        self.stack.addWidget(self._make_alerts_page()) 
-        self.stack.addWidget(self._make_catalog_page()) 
-        self.stack.addWidget(self._make_demo_page())   
-        self.stack.addWidget(self._make_history_page()) 
-        self.stack.addWidget(self._make_network_page()) 
-        self.stack.addWidget(self._make_report_page()) 
+        self.stack.addWidget(self._make_dashboard())    # 0
+        self.stack.addWidget(self._make_alerts_page())  # 1
+        self.stack.addWidget(self._make_catalog_page()) # 2
+        self.stack.addWidget(self._make_demo_page())    # 3
+        self.stack.addWidget(self._make_history_page()) # 4
+        self.stack.addWidget(self._make_network_page()) # 5
+        self.stack.addWidget(self._make_report_page())  # 6
+        self.stack.addWidget(self._make_lab_page())     # 7
         root.addWidget(self.stack, 1)
 
     def _make_sidebar(self):
@@ -1062,6 +804,7 @@ class MainWindow(QMainWindow):
             ("History",       4),
             ("Network",       5),
             ("System Report", 6),
+            ("Lab Monitor",   7),
         ]
 
         nav_wrap = QWidget()
@@ -1535,6 +1278,438 @@ class MainWindow(QMainWindow):
         threading.Thread(target=runner, daemon=True).start()
 
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # LAB MONITOR PAGE
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _make_lab_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(16)
+
+        # ── Header ───────────────────────────────────────────────────────────
+        hdr = QHBoxLayout()
+        title = QLabel("🖥  Lab Monitor")
+        title.setStyleSheet(f"color: {TEXT1}; font-size: 22px; font-weight: bold;")
+        hdr.addWidget(title)
+        hdr.addStretch()
+
+        # Mode badge
+        self._lab_mode_badge = QLabel("Mode: unset")
+        self._lab_mode_badge.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT3}; border: 1px solid {BORDER}; "
+            f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
+        )
+        hdr.addWidget(self._lab_mode_badge)
+        layout.addLayout(hdr)
+
+        # ── Mode setup card ───────────────────────────────────────────────────
+        self._lab_setup_card = QFrame()
+        self._lab_setup_card.setStyleSheet(
+            f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 10px;"
+        )
+        setup_layout = QVBoxLayout(self._lab_setup_card)
+        setup_layout.setContentsMargins(24, 20, 24, 20)
+        setup_layout.setSpacing(12)
+
+        setup_title = QLabel("Set Up This PC")
+        setup_title.setStyleSheet(f"color: {TEXT1}; font-size: 15px; font-weight: bold; background: transparent; border: none;")
+        setup_layout.addWidget(setup_title)
+
+        setup_desc = QLabel(
+            "Choose a role for this PC. The same SmartFix installer runs on every machine in the lab. "
+            "One PC becomes the Admin (teacher) and the rest are Clients (student PCs)."
+        )
+        setup_desc.setStyleSheet(f"color: {TEXT2}; font-size: 12px; background: transparent; border: none;")
+        setup_desc.setWordWrap(True)
+        setup_layout.addWidget(setup_desc)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+
+        self._btn_admin_mode = QPushButton("🎓  Set as Admin (Teacher PC)")
+        self._btn_admin_mode.setStyleSheet(
+            f"background: {ACCENT}; color: white; padding: 10px 20px; border: none; "
+            f"border-radius: 8px; font-weight: bold; font-size: 13px;"
+        )
+        self._btn_admin_mode.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_admin_mode.clicked.connect(lambda: self._lab_set_admin_mode())
+        btn_row.addWidget(self._btn_admin_mode)
+
+        self._btn_client_mode = QPushButton("💻  Set as Client (Student PC)")
+        self._btn_client_mode.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT1}; padding: 10px 20px; border: 1px solid {BORDER}; "
+            f"border-radius: 8px; font-weight: bold; font-size: 13px;"
+        )
+        self._btn_client_mode.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_client_mode.clicked.connect(lambda: self._lab_set_client_mode())
+        btn_row.addWidget(self._btn_client_mode)
+        btn_row.addStretch()
+        setup_layout.addLayout(btn_row)
+        layout.addWidget(self._lab_setup_card)
+
+        # ── Admin dashboard (hidden by default) ───────────────────────────────
+        self._lab_admin_panel = QWidget()
+        admin_v = QVBoxLayout(self._lab_admin_panel)
+        admin_v.setContentsMargins(0, 0, 0, 0)
+        admin_v.setSpacing(12)
+
+        admin_bar = QHBoxLayout()
+        self._lab_client_count_lbl = QLabel("0 PCs online")
+        self._lab_client_count_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 13px;")
+        admin_bar.addWidget(self._lab_client_count_lbl)
+        admin_bar.addStretch()
+
+        add_btn = QPushButton("+ Add PC manually")
+        add_btn.setStyleSheet(
+            f"background: {BG_CARD2}; color: {TEXT1}; padding: 6px 14px; border: 1px solid {BORDER}; "
+            f"border-radius: 6px; font-size: 12px;"
+        )
+        add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_btn.clicked.connect(self._lab_add_client_dialog)
+        admin_bar.addWidget(add_btn)
+        admin_v.addLayout(admin_bar)
+
+        # Scroll area for PC cards
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self._lab_cards_widget = QWidget()
+        self._lab_cards_widget.setStyleSheet("background: transparent;")
+        self._lab_cards_layout = QVBoxLayout(self._lab_cards_widget)
+        self._lab_cards_layout.setSpacing(8)
+        self._lab_cards_layout.addStretch()
+        scroll.setWidget(self._lab_cards_widget)
+        admin_v.addWidget(scroll)
+        self._lab_admin_panel.setVisible(False)
+        layout.addWidget(self._lab_admin_panel)
+
+        # ── Client status card (hidden by default) ────────────────────────────
+        self._lab_client_panel = QWidget()
+        cp_v = QVBoxLayout(self._lab_client_panel)
+        cp_v.setContentsMargins(0, 0, 0, 0)
+        cp_v.setSpacing(10)
+
+        self._lab_client_status = QFrame()
+        self._lab_client_status.setStyleSheet(
+            f"background: {BG_CARD}; border: 1px solid {GREEN}60; border-radius: 10px;"
+        )
+        csl = QVBoxLayout(self._lab_client_status)
+        csl.setContentsMargins(24, 18, 24, 18)
+        csl.setSpacing(6)
+        self._lab_client_seat_lbl = QLabel("Seat: —")
+        self._lab_client_seat_lbl.setStyleSheet(f"color: {TEXT1}; font-size: 16px; font-weight: bold; background: transparent; border: none;")
+        csl.addWidget(self._lab_client_seat_lbl)
+        self._lab_client_ip_lbl = QLabel("IP: —")
+        self._lab_client_ip_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 12px; background: transparent; border: none;")
+        csl.addWidget(self._lab_client_ip_lbl)
+        self._lab_client_agent_lbl = QLabel("Agent: starting…")
+        self._lab_client_agent_lbl.setStyleSheet(f"color: {GREEN}; font-size: 12px; background: transparent; border: none;")
+        csl.addWidget(self._lab_client_agent_lbl)
+        cp_v.addWidget(self._lab_client_status)
+        self._lab_client_panel.setVisible(False)
+        layout.addWidget(self._lab_client_panel)
+
+        layout.addStretch()
+        return page
+
+    def _lab_set_admin_mode(self):
+        """Configure this PC as Admin and (re)start the admin manager."""
+        set_mode("admin")
+        self._lab_mode = "admin"
+        self._lab_setup_card.setVisible(False)
+        self._lab_admin_panel.setVisible(True)
+        self._lab_client_panel.setVisible(False)
+        self._lab_mode_badge.setText("Mode: Admin")
+        self._lab_mode_badge.setStyleSheet(
+            f"background: {ACCENT}30; color: {ACCENT}; border: 1px solid {ACCENT}60; "
+            f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
+        )
+        self._ensure_lab_admin()
+
+    def _lab_set_client_mode(self):
+        """Prompt for seat name and configure this PC as a client."""
+        from PyQt6.QtWidgets import QInputDialog
+        current = get_seat_name() or ""
+        name, ok = QInputDialog.getText(
+            self, "Set Seat Name",
+            "Enter a seat name for this PC (e.g. PC-01):",
+            text=current
+        )
+        if ok and name.strip():
+            set_seat_name(name.strip())
+            set_mode("client")
+            self._lab_mode = "client"
+            self._lab_setup_card.setVisible(False)
+            self._lab_admin_panel.setVisible(False)
+            self._lab_client_panel.setVisible(True)
+            self._lab_mode_badge.setText("Mode: Client")
+            self._lab_mode_badge.setStyleSheet(
+                f"background: {GREEN}20; color: {GREEN}; border: 1px solid {GREEN}50; "
+                f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
+            )
+            self._lab_client_seat_lbl.setText(f"Seat: {name.strip()}")
+            self._lab_client_ip_lbl.setText(f"IP: {get_local_ip()}  |  Port: {LAB_PORT}")
+            self._ensure_lab_agent()
+
+    def _ensure_lab_agent(self):
+        """Start the client agent if not already running."""
+        if self._lab_agent is None:
+            self._lab_agent = LabClientAgent()
+            self._lab_agent.start()
+        self._lab_client_agent_lbl.setText("Agent: running — broadcasting presence on LAN")
+
+    def _ensure_lab_admin(self):
+        """Start the admin manager if not already running."""
+        if self._lab_admin is None:
+            self._lab_admin = LabAdminManager(
+                on_update=lambda clients: self._alert_signal.emit(
+                    {"__type__": "lab_update", "clients": clients}
+                )
+            )
+            self._lab_admin.start()
+
+    def _lab_add_client_dialog(self):
+        """Allow admin to manually register a client PC by seat + IP."""
+        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Add Client PC")
+        dlg.setStyleSheet(self.styleSheet())
+        form = QFormLayout(dlg)
+        seat_edit = QLineEdit()
+        seat_edit.setPlaceholderText("e.g. PC-01")
+        ip_edit = QLineEdit()
+        ip_edit.setPlaceholderText("e.g. 192.168.1.50")
+        form.addRow("Seat name:", seat_edit)
+        form.addRow("IP address:", ip_edit)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        form.addRow(btns)
+        if dlg.exec() and seat_edit.text().strip() and ip_edit.text().strip():
+            if self._lab_admin:
+                self._lab_admin.add_client_manual(seat_edit.text().strip(), ip_edit.text().strip())
+
+    def _lab_update_admin_ui(self, clients: list):
+        """Rebuild the admin PC cards grid. Called on main thread via signal."""
+        # Clear existing cards (leave the stretch)
+        while self._lab_cards_layout.count() > 1:
+            item = self._lab_cards_layout.takeAt(0)
+            if item and item.widget():
+                item.widget().setParent(None)
+
+        online = sum(1 for c in clients if c.online)
+        self._lab_client_count_lbl.setText(
+            f"{online} online / {len(clients)} total"
+        )
+
+        for client in sorted(clients, key=lambda c: c.seat):
+            card = self._make_lab_client_card(client)
+            self._lab_cards_layout.insertWidget(
+                self._lab_cards_layout.count() - 1, card
+            )
+
+    def _make_lab_client_card(self, client: ClientInfo) -> QFrame:
+        """Create a card widget for one student PC."""
+        online = client.online
+        status_color = GREEN if online else TEXT3
+        border_col   = f"{GREEN}50" if online else BORDER
+        err_count    = client.error_count
+
+        card = QFrame()
+        card.setStyleSheet(
+            f"background: {BG_CARD}; border: 1px solid {border_col}; border-radius: 10px;"
+        )
+        row = QHBoxLayout(card)
+        row.setContentsMargins(16, 12, 14, 12)
+        row.setSpacing(12)
+
+        # Status dot
+        dot = QLabel()
+        dot.setFixedSize(10, 10)
+        dot.setStyleSheet(f"background: {status_color}; border-radius: 5px; border: none;")
+        row.addWidget(dot)
+
+        # Seat + IP
+        info_col = QVBoxLayout()
+        info_col.setSpacing(2)
+        seat_lbl = QLabel(client.seat)
+        seat_lbl.setStyleSheet(f"color: {TEXT1}; font-size: 14px; font-weight: bold; background: transparent; border: none;")
+        info_col.addWidget(seat_lbl)
+        ip_lbl = QLabel(client.ip if online else "Offline")
+        ip_lbl.setStyleSheet(f"color: {TEXT2}; font-size: 11px; background: transparent; border: none;")
+        info_col.addWidget(ip_lbl)
+        row.addLayout(info_col)
+        row.addStretch()
+
+        # Metrics pills
+        if online and client.metrics:
+            m = client.metrics
+            def pill(label, val, warn=70, crit=90):
+                col = RED if val >= crit else ORANGE if val >= warn else GREEN
+                lbl = QLabel(f"{label} {val:.0f}%")
+                lbl.setStyleSheet(
+                    f"background: {col}20; color: {col}; border: 1px solid {col}40; "
+                    f"border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: bold;"
+                )
+                return lbl
+            for lbl in [
+                pill("CPU",  m.get("cpu_percent", 0)),
+                pill("RAM",  m.get("memory_percent", 0)),
+                pill("Disk", m.get("disk_percent", 0)),
+            ]:
+                row.addWidget(lbl)
+
+        # Error count badge
+        if err_count > 0:
+            err_badge = QLabel(f"⚠ {err_count} error{'s' if err_count != 1 else ''}")
+            err_badge.setStyleSheet(
+                f"background: {RED}20; color: {RED}; border: 1px solid {RED}40; "
+                f"border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: bold;"
+            )
+            row.addWidget(err_badge)
+
+        # Refresh button
+        if online:
+            refresh_btn = QPushButton("↻")
+            refresh_btn.setFixedSize(28, 28)
+            refresh_btn.setToolTip("Refresh status now")
+            refresh_btn.setStyleSheet(
+                f"background: {BG_CARD2}; color: {TEXT1}; border: 1px solid {BORDER}; "
+                f"border-radius: 6px; font-size: 14px;"
+            )
+            refresh_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            refresh_btn.clicked.connect(
+                lambda _, seat=client.seat: self._lab_admin.poll_client_now(seat) if self._lab_admin else None
+            )
+            row.addWidget(refresh_btn)
+
+        # View errors button (only if errors exist)
+        if err_count > 0 and online:
+            view_btn = QPushButton("View Errors")
+            view_btn.setStyleSheet(
+                f"background: {ORANGE}20; color: {ORANGE}; border: 1px solid {ORANGE}50; "
+                f"border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: bold;"
+            )
+            view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            view_btn.clicked.connect(
+                lambda _, c=client: self._lab_show_errors_dialog(c)
+            )
+            row.addWidget(view_btn)
+
+        return card
+
+    def _lab_show_errors_dialog(self, client: ClientInfo):
+        """Show a dialog listing errors on the client PC with remote-repair buttons."""
+        from PyQt6.QtWidgets import QDialog, QScrollArea
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Errors on {client.seat} ({client.ip})")
+        dlg.setMinimumSize(600, 400)
+        dlg.setStyleSheet(self.styleSheet())
+        outer = QVBoxLayout(dlg)
+        outer.setContentsMargins(20, 16, 20, 16)
+        outer.setSpacing(10)
+
+        title = QLabel(f"⚠  Errors on {client.seat}")
+        title.setStyleSheet(f"color: {TEXT1}; font-size: 16px; font-weight: bold;")
+        outer.addWidget(title)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setSpacing(8)
+
+        if not client.errors:
+            no_err = QLabel("No errors reported.")
+            no_err.setStyleSheet(f"color: {GREEN}; font-size: 13px;")
+            body_layout.addWidget(no_err)
+        else:
+            for err in client.errors:
+                eframe = QFrame()
+                eframe.setStyleSheet(
+                    f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 8px;"
+                )
+                erow = QHBoxLayout(eframe)
+                erow.setContentsMargins(14, 10, 10, 10)
+                erow.setSpacing(10)
+
+                ecol = QVBoxLayout()
+                ecol.setSpacing(2)
+                ename = QLabel(err.get("name", err.get("id", "Unknown")))
+                ename.setStyleSheet(f"color: {TEXT1}; font-weight: bold; font-size: 12px; background: transparent; border: none;")
+                ecol.addWidget(ename)
+                edesc = QLabel(err.get("description", ""))
+                edesc.setStyleSheet(f"color: {TEXT2}; font-size: 11px; background: transparent; border: none;")
+                edesc.setWordWrap(True)
+                ecol.addWidget(edesc)
+                erow.addLayout(ecol, 1)
+
+                fix_btn = QPushButton("🔧 Fix Remotely")
+                fix_btn.setStyleSheet(
+                    f"background: {ACCENT}; color: white; border: none; border-radius: 6px; "
+                    f"padding: 7px 14px; font-weight: bold; font-size: 11px;"
+                )
+                fix_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                fix_btn.clicked.connect(
+                    lambda _, seat=client.seat, eid=err.get("repair_id", err.get("id", "")), btn=fix_btn:
+                        self._lab_remote_repair(seat, eid, btn)
+                )
+                erow.addWidget(fix_btn)
+                body_layout.addWidget(eframe)
+
+        body_layout.addStretch()
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
+        dlg.exec()
+
+    def _lab_remote_repair(self, seat: str, error_id: str, btn: QPushButton):
+        """Send a remote repair command to a client PC."""
+        if not self._lab_admin:
+            return
+        btn.setText("Sending…")
+        btn.setEnabled(False)
+
+        def on_result(result):
+            success = result.get("success", False)
+            msg     = result.get("message", "")
+            self._alert_signal.emit({
+                "__type__": "lab_repair_result",
+                "seat": seat,
+                "error_id": error_id,
+                "success": success,
+                "message": msg,
+                "btn_ref": id(btn),
+            })
+
+        self._lab_admin.request_repair(seat, error_id, on_result=on_result)
+
+    def _start_lab_services(self):
+        """On startup, auto-resume whichever mode was previously set."""
+        mode = get_mode()
+        self._lab_mode = mode
+        if mode == "admin":
+            self._lab_set_admin_mode()
+        elif mode == "client":
+            seat = get_seat_name()
+            if seat:
+                set_mode("client")
+                self._lab_mode = "client"
+                # Update client panel without re-prompting
+                self._lab_setup_card.setVisible(False)
+                self._lab_client_panel.setVisible(True)
+                self._lab_admin_panel.setVisible(False)
+                self._lab_mode_badge.setText("Mode: Client")
+                self._lab_mode_badge.setStyleSheet(
+                    f"background: {GREEN}20; color: {GREEN}; border: 1px solid {GREEN}50; "
+                    f"border-radius: 6px; padding: 4px 12px; font-size: 11px;"
+                )
+                self._lab_client_seat_lbl.setText(f"Seat: {seat}")
+                self._lab_client_ip_lbl.setText(f"IP: {get_local_ip()}  |  Port: {LAB_PORT}")
+                self._ensure_lab_agent()
+
     def _setup_tray(self):
         try:
             
@@ -1695,6 +1870,37 @@ class MainWindow(QMainWindow):
             self.last_scan_lbl.setText(f"Updated {datetime.now().strftime('%H:%M:%S')}")
             return
 
+        # ── Lab Monitor signals ───────────────────────────────────────────────
+        if error_info.get("__type__") == "lab_update":
+            clients = error_info.get("clients", [])
+            self._lab_update_admin_ui(clients)
+            # Also feed fresh metrics to the local agent if in client mode
+            if self._lab_mode == "client" and self._lab_agent:
+                metrics = {
+                    "cpu_percent":    error_info.get("cpu", 0),
+                    "memory_percent": error_info.get("ram", 0),
+                    "disk_percent":   error_info.get("disk", 0),
+                }
+                self._lab_agent.update_metrics(metrics)
+            return
+
+        if error_info.get("__type__") == "lab_repair_result":
+            seat    = error_info.get("seat", "")
+            success = error_info.get("success", False)
+            message = error_info.get("message", "")
+            from PyQt6.QtWidgets import QMessageBox
+            if success:
+                QMessageBox.information(
+                    self, f"Repair on {seat}",
+                    f"✅ Repair succeeded on {seat}:\n{message}"
+                )
+            else:
+                QMessageBox.warning(
+                    self, f"Repair on {seat}",
+                    f"❌ Repair failed on {seat}:\n{message}"
+                )
+            return
+
         sig_type = error_info.get("type")
 
         if sig_type == "net_done":
@@ -1737,6 +1943,10 @@ class MainWindow(QMainWindow):
         self.health_widgets["errors"].setStyleSheet(f"color: {RED}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
         log_detection(error_info)
 
+        # Feed error to lab agent if running in client mode
+        if self._lab_mode == "client" and self._lab_agent:
+            self._lab_agent.update_errors(list(self._alerts))
+
         eid = error_info.get("id", "")
 
         # Skip if this error is already showing in the Active Alerts list
@@ -1751,13 +1961,44 @@ class MainWindow(QMainWindow):
         alert_item = AlertItem(error_info, self._fix_from_list, self._ignore_from_list)
         self.alerts_layout.insertWidget(0, alert_item)
 
-        # Only show 1 popup at a time, CRITICAL only
-        if error_info.get("severity") == "CRITICAL" and not self._popup_visible:
+        # Show popup for CRITICAL, HIGH severity or DEMO scenarios (so all demo alerts are immediately visible)
+        sev = error_info.get("severity", "")
+        is_demo = error_info.get("is_demo", False) or eid in DEMO_SCENARIOS
+        if (is_demo or sev in ("CRITICAL", "HIGH")) and not self._popup_visible:
             self._popup_visible = True
             popup = AlertPopup(error_info, self)
             popup.destroyed.connect(lambda: setattr(self, '_popup_visible', False))
             popup.show()
             self._active_popups.append(popup)
+
+    def resolve_alert_from_popup(self, error_info: dict):
+        eid = error_info.get("id", "")
+        # Remove from active list widget if present
+        for i in range(self.alerts_layout.count()):
+            w = self.alerts_layout.itemAt(i).widget()
+            if w and hasattr(w, "error_info") and w.error_info.get("id") == eid:
+                w.setParent(None)
+                break
+        self._alert_count = max(0, self._alert_count - 1)
+        self.card_alerts.set_value(str(self._alert_count))
+        if eid:
+            self._active_alert_ids.discard(eid)
+            if self._monitor:
+                self._monitor.mark_resolved(eid, cooldown_seconds=3600)
+        if error_info.get("repair_id") == "unknown_error":
+            dlg = AIAssistantDialog(error_info, self)
+            dlg.exec()
+            self._fixed_count += 1
+            self.card_fixed.set_value(str(self._fixed_count))
+        else:
+            dlg = RepairDialog(error_info, self)
+            if dlg.exec():
+                self._fixed_count += 1
+                self.card_fixed.set_value(str(self._fixed_count))
+        if self._alert_count == 0:
+            self.no_alerts_lbl.setVisible(True)
+            self.health_widgets["errors"].setText("None")
+            self.health_widgets["errors"].setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
 
     def _fix_from_list(self, error_info: dict, item_widget: QFrame):
         eid = error_info.get("id", "")
@@ -1813,17 +2054,20 @@ class MainWindow(QMainWindow):
 
     def _run_demo(self, scenario_id: str, btn: QPushButton):
         original_text = btn.text()
-        btn.setText("⏳ Running…")
+        btn.setText("⏳ Injecting…")
         btn.setEnabled(False)
 
         def restore():
-            btn.setText(original_text)
+            btn.setText("✅ " + original_text.lstrip("▶  "))
             btn.setEnabled(True)
+            # Reset label back after 3s
+            QTimer.singleShot(3000, lambda: btn.setText(original_text))
 
         if self._demo:
-            self._demo.run_demo(scenario_id, delay_seconds=2.0)
+            self._demo.run_demo(scenario_id, delay_seconds=1.5)
 
-        QTimer.singleShot(5000, restore)
+        # Re-enable after 4s (enough time for alert to appear)
+        QTimer.singleShot(4000, restore)
 
     def closeEvent(self, event):
         """Minimize to tray instead of closing."""

@@ -1,8 +1,10 @@
-# 🛡 SmartFix AI — Intelligent Windows Error Monitor & Auto-Repair
+# 🛡️ SmartFix AI — Autonomous Windows Error Monitor & Lab Auto-Repair
 
-> **Autonomous Windows error detection, diagnosis, and repair — powered by Llama 3 AI**
+> **Autonomous Windows error detection, diagnosis, and automated repair — powered by Local Llama 3 AI and multi-PC Lab Management.**
 
-SmartFix AI runs silently in the background, monitors your Windows system for 150+ known errors, and offers one-click automated repairs. For unknown errors, it uses a local AI model (Llama 3 via Ollama) to generate and execute a custom PowerShell fix — which is then saved and reused forever.
+SmartFix AI runs silently in the background, monitors your Windows systems for **170+ known errors**, and offers one-click automated PowerShell repairs. For unknown application crashes, it uses a local AI model (**Llama 3 / 3.2 via Ollama**) to generate and execute custom PowerShell fixes — which are automatically saved into a self-learning database for future automated reuse.
+
+SmartFix AI is built to operate both as an **individual workstation guardian** and as a **centralized College Computer Lab Monitor (1 Admin PC + N Client PCs)** over local area networks (LAN).
 
 ---
 
@@ -10,105 +12,96 @@ SmartFix AI runs silently in the background, monitors your Windows system for 15
 
 | Feature | Description |
 |---|---|
-| 🔍 **Real-time Monitoring** | Watches Windows services, Event Log, CPU/RAM/Disk metrics continuously |
-| ⚡ **150+ Hardcoded Errors** | Covers Windows Update, Network, Security, Storage, Applications, and more |
-| 🤖 **AI Diagnosis** | Uses Llama 3 (local, private) to diagnose and fix unknown errors |
-| 🧠 **Self-Learning** | AI-generated fixes are saved and reused on future occurrences |
-| 🔔 **Smart Notifications** | CRITICAL errors trigger a clean toast popup — no spam |
-| 🛠 **One-Click Repair** | PowerShell repair engine fixes errors automatically with admin rights |
-| 📊 **System Dashboard** | Live CPU, RAM, Disk, Network, and service health overview |
-| 🌐 **Network Diagnostics** | Full network connectivity and DNS resolution tests |
-| 📄 **System Report** | Generates a detailed HTML system health report |
-| 🎭 **Demo Mode** | Simulate real Windows errors to see SmartFix in action |
+| 🔍 **Real-time Monitoring** | Multi-threaded polling for Windows services, Event Log crashes, CPU/RAM/Disk metrics |
+| ⚡ **170+ Deterministic Repairs** | 100% verified PowerShell scripts covering Windows Update, Network, Security, and Storage |
+| 🎓 **College Lab Monitor** | 1 Admin PC monitors all student PCs on the LAN with live telemetry and 1-click remote fix |
+| 🛠️ **10 Major College Lab Fixes** | USB drive unlock, Task Manager/CMD policy unlock, Proxy reset, XAMPP port 80, MySQL port 3306, compiler PATHs |
+| 🤖 **Local AI Diagnosis** | Uses Ollama (`llama3.2:1b` / `llama3`) running 100% offline and private |
+| 🧠 **Autonomous Self-Learning** | AI-generated fixes are saved into `data/learned_errors.json` and reused automatically |
+| 🔔 **Windows 11 Toast Alerts** | Clean slide-in notifications in the bottom-right corner with 30s countdown |
+| 🛠 **One-Click Real Repair** | Direct administrative PowerShell execution (`-ExecutionPolicy Bypass`) |
+| 📊 **Modern Dark Dashboard** | Real-time hardware gauges, service status, and active error management |
+| 🌐 **Network Diagnostics** | Full gateway ping, DNS resolution, and latency diagnostics |
+| 📄 **System Health Reports** | Generates exportable, styled HTML diagnostic reports |
+| 🎭 **Judge Demo Mode** | Safely simulates real Windows errors to demonstrate detection → alert → repair flow |
 
 ---
 
-## 🚀 Quick Install (End Users)
+## 🚀 Quick Install (End Users & Lab Setup)
 
-1. Download **`SmartFix_Setup.exe`** from [Releases](https://github.com/RishiVartak6/SmartFix-AI/releases)
-2. Double-click and follow the installer wizard
-3. The installer automatically downloads and sets up:
-   - Python 3.11
-   - All required libraries (PyQt6, psutil, httpx)
-   - Ollama AI engine
-   - Llama 3 model (~4.7 GB — requires internet during setup)
-4. SmartFix AI launches automatically and runs in the system tray
-
-> **Requirements:** Windows 10/11 (64-bit) · Internet during install · 8 GB RAM recommended
-
----
-
-## 🛠 Developer Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/RishiVartak6/SmartFix-AI.git
-cd SmartFix-AI
-
-# Install dependencies
-pip install PyQt6 psutil httpx pywin32
-
-# Run as Administrator (required for service monitoring)
-python smartfix_app.py
-```
-
-### AI Features (Optional)
-```bash
-# Install Ollama from https://ollama.com
-ollama pull llama3
-ollama serve
-```
+1. Run **`SmartFix_Setup.exe`** from `dist\installer\` (or [Releases](https://github.com/RishiVartak6/SmartFix-AI/releases)).
+2. The installer automatically downloads and silently provisions:
+   - Visual C++ 2015–2022 Redistributable (x64)
+   - Python 3.11.9 (with PATH configured)
+   - All libraries (`PyQt6`, `psutil`, `httpx`, `pywin32`, `WMI`, `Pillow`, `pystray`, `plyer`)
+   - Ollama AI engine & local LLM model
+   - Windows Defender Firewall rules for Lab Monitor (TCP 7771, UDP 7772)
+   - Windows auto-start on boot
+3. SmartFix AI launches automatically and runs in the Windows System Tray.
 
 ---
 
-## 🏗 Project Structure
+## 🏫 Setting Up a College Computer Lab (1 Admin + N Clients)
+
+SmartFix AI uses the **exact same installer** on all computers in the lab:
+
+1. **Teacher PC (Admin)**:
+   - Open SmartFix AI → Go to **🖥 Lab Monitor** in sidebar.
+   - Click **`🎓 Set as Admin (Teacher PC)`**.
+   - The dashboard transforms into the Lab Command Center, listening for student PCs.
+
+2. **Student PCs (Clients)**:
+   - Open SmartFix AI on each student PC → Go to **🖥 Lab Monitor**.
+   - Click **`💻 Set as Client (Student PC)`**.
+   - Enter seat name (`PC-01`, `PC-02`, etc.).
+   - The student PC automatically broadcasts its presence on the LAN (UDP 7772).
+
+3. **Remote Repair**:
+   - If any student PC has an error, its card turns red on the Teacher's screen.
+   - The teacher clicks **`⚡ Fix`** on the Admin dashboard to trigger a remote administrative repair over TCP 7771.
+
+---
+
+## 🏗 Project Architecture
 
 ```
 SmartFix-AI/
-├── smartfix_app.py          ← Main application (PyQt6 UI + system tray)
-├── SmartFix AI.exe          ← C# launcher (production entry point)
+├── smartfix_app.py          ← Main application (PyQt6 UI + system tray + lab page)
+├── SmartFix AI.exe          ← C# .NET launcher stub with UAC administrator manifest
+├── CHATGPT_PROJECT_CONTEXT.md ← Master context & architecture prompt for AI models
+├── BUILD_INSTALLER.bat      ← 1-Click Inno Setup builder script
+├── SmartFix_Installer.iss   ← Inno Setup configuration script
+├── install_helper.ps1       ← Silent dependency installer (Python, Ollama, model, firewall)
+├── requirements.txt         ← Python dependencies
 ├── monitor/
-│   ├── monitor.py           ← Background monitoring threads
-│   ├── error_catalog.py     ← 150+ Windows error definitions
-│   ├── repair_engine.py     ← PowerShell repair executor
-│   ├── repair_advanced.py   ← Advanced repair strategies
-│   ├── difficult_errors.py  ← Complex error patterns
-│   ├── ai_dialog.py         ← AI Diagnosis dialog
-│   ├── llm_assistant.py     ← Ollama/Llama 3 interface
-│   ├── learned_repairs.py   ← AI self-learning persistence
-│   ├── demo_mode.py         ← Demo scenario engine
-│   ├── demo_window.py       ← Demo UI window
-│   ├── history.py           ← Repair history database
-│   ├── network_diag.py      ← Network diagnostics
-│   └── system_report.py     ← HTML report generator
-├── BUILD_INSTALLER.bat      ← Rebuild SmartFix_Setup.exe
-├── SmartFix_Installer.iss   ← Inno Setup installer script
-└── install_helper.ps1       ← Silent dependency installer
-```
-
----
-
-## 🔐 How It Works
-
-```
-Windows error occurs
-        ↓
-BackgroundMonitor detects it (services / Event Log / metrics)
-        ↓
-Alert shown in dashboard + CRITICAL popup notification
-        ↓
-User clicks "Fix Now"
-        ↓
-Known error → PowerShell repair script executes
-Unknown error → Llama 3 AI diagnoses → generates fix → executes → saved for future
+│   ├── monitor.py           ← Multi-threaded background monitoring engine
+│   ├── error_catalog.py     ← 170 Windows & College Lab error definitions
+│   ├── repair_engine.py     ← 100% verified PowerShell repair functions
+│   ├── repair_advanced.py   ← BCD, bootmgr, WMI salvage, and registry repairs
+│   ├── difficult_errors.py  ← BSOD bugcheck analyzers & crash dump definitions
+│   ├── lab_config.py        ← LAN protocol (JSON framing), ports (7771, 7772), config
+│   ├── lab_agent.py         ← Client Agent: UDP 7772 broadcaster & TCP 7771 listener
+│   ├── lab_admin.py         ← Admin Manager: discovery listener, polling & remote fix
+│   ├── llm_assistant.py     ← Ollama local AI client (dynamic model detection + fallback)
+│   ├── learned_repairs.py   ← Self-learning database manager (learned_errors.json)
+│   ├── ai_dialog.py         ← Interactive AI technical assistant dialog
+│   ├── demo_mode.py         ← Safe error simulation engine for judge presentations
+│   ├── demo_window.py       ← Standalone demo window
+│   ├── history.py           ← SQLite database logger (smartfix_history.db)
+│   ├── network_diag.py      ← Network ping, DNS, and latency tests
+│   └── system_report.py     ← HTML report exporter
+└── data/
+    ├── smartfix_history.db  ← SQLite database of repair history
+    ├── learned_errors.json  ← Persisted AI-learned repairs
+    └── lab_config.json      ← Persistent lab seat name and role
 ```
 
 ---
 
 ## 📦 Building the Installer
 
-```bash
-# Requires Inno Setup 6 (auto-installed if missing)
+```bat
+# Requires Inno Setup 6 (auto-detected in AppData or Program Files)
 BUILD_INSTALLER.bat
 # Output: dist\installer\SmartFix_Setup.exe
 ```
@@ -117,7 +110,7 @@ BUILD_INSTALLER.bat
 
 ## 🎓 Academic Project
 
-Developed as a **B.E. Final Year Major Project** — Autonomous Windows System Repair using Local LLM.
+Developed as a **B.E. Final Year Major Project** — *Autonomous Windows System Administration and Multi-PC Lab Monitor with Local LLM Self-Learning*.
 
 ---
 

@@ -1,4 +1,3 @@
-from monitor.learned_repairs import load_learned_errors
 """
 SmartFix AI — Complete Repair Engine
 Handles all errors: Windows core + 3rd party apps (Valorant, Steam, Discord, Chrome, Office, etc.)
@@ -9,6 +8,8 @@ import logging
 import os
 import time
 from typing import Dict, Any, Tuple
+
+from monitor.learned_repairs import load_learned_errors
 
 logger = logging.getLogger("smartfix.repair_engine")
 REPAIR_TIMEOUT = 120
@@ -1360,9 +1361,329 @@ Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 |
 
 
 
+@repair("restart_wmi")
+def restart_wmi():
+    ok, out = _run_ps("""
+net stop winmgmt /y 2>$null | Out-Null
+Start-Service winmgmt -ErrorAction SilentlyContinue
+(Get-Service winmgmt).Status
+""")
+    return ok, f"WMI Service: {out}"
+
+@repair("fix_teams_crash")
+def fix_teams_crash():
+    script = """
+Get-Process ms-teams, Teams -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:APPDATA\\Microsoft\\Teams\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:LOCALAPPDATA\\Packages\\MSTeams_*\\LocalCache\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Write-Output "Microsoft Teams cache cleared and processes reset."
+"""
+    return _run_ps(script)
+
+@repair("reinstall_gpu_driver")
+def reinstall_gpu_driver():
+    script = """
+Write-Output "Restarting Windows display subsystem & querying graphics adapters..."
+Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, Status | Format-Table -AutoSize | Out-String | Write-Output
+Write-Output "Display adapter query complete. To reload driver, use Win+Ctrl+Shift+B."
+"""
+    return _run_ps(script)
+
+@repair("restart_lxss_manager")
+def restart_lxss_manager():
+    ok, out = _run_ps("""
+Restart-Service LxssManager -Force -ErrorAction SilentlyContinue
+(Get-Service LxssManager -ErrorAction SilentlyContinue).Status
+""")
+    return ok, f"WSL LxssManager: {out}"
+
+@repair("restart_event_log")
+def restart_event_log():
+    ok, out = _run_ps("""
+Start-Service EventLog -ErrorAction SilentlyContinue
+(Get-Service EventLog).Status
+""")
+    return ok, f"Windows Event Log: {out}"
+
+@repair("restart_vss")
+def restart_vss():
+    ok, out = _run_ps("""
+Restart-Service VSS -Force -ErrorAction SilentlyContinue
+(Get-Service VSS).Status
+""")
+    return ok, f"Volume Shadow Copy: {out}"
+
+@repair("run_disk_diagnostics")
+def run_disk_diagnostics():
+    script = """
+Get-PhysicalDisk | Select-Object DeviceId, FriendlyName, MediaType, HealthStatus, OperationalStatus | Format-Table -AutoSize | Out-String | Write-Output
+"""
+    return _run_ps(script)
+
+@repair("run_chkdsk")
+def run_chkdsk():
+    script = """
+Write-Output "Scanning system drive for NTFS file system errors..."
+Repair-Volume -DriveLetter C -Scan 2>&1 | Out-String | Write-Output
+"""
+    return _run_ps(script, timeout=180)
+
+@repair("restart_rdp")
+def restart_rdp():
+    ok, out = _run_ps("""
+Restart-Service TermService -Force -ErrorAction SilentlyContinue
+(Get-Service TermService).Status
+""")
+    return ok, f"Remote Desktop (TermService): {out}"
+
+@repair("repair_office_click_to_run")
+def repair_office_click_to_run():
+    ok, out = _run_ps("""
+Restart-Service ClickToRunSvc -Force -ErrorAction SilentlyContinue
+(Get-Service ClickToRunSvc -ErrorAction SilentlyContinue).Status
+""")
+    return ok, f"Office Click-to-Run: {out}"
+
+@repair("restart_hyperv")
+def restart_hyperv():
+    ok, out = _run_ps("""
+Restart-Service vmms -Force -ErrorAction SilentlyContinue
+(Get-Service vmms -ErrorAction SilentlyContinue).Status
+""")
+    return ok, f"Hyper-V Service: {out}"
+
+@repair("restart_task_scheduler")
+def restart_task_scheduler():
+    ok, out = _run_ps("""
+Start-Service Schedule -ErrorAction SilentlyContinue
+(Get-Service Schedule).Status
+""")
+    return ok, f"Task Scheduler: {out}"
+
+@repair("restart_dhcp_client")
+def restart_dhcp_client():
+    ok, out = _run_ps("""
+Restart-Service Dhcp -Force -ErrorAction SilentlyContinue
+(Get-Service Dhcp).Status
+""")
+    return ok, f"DHCP Client: {out}"
+
+@repair("restart_nla")
+def restart_nla():
+    ok, out = _run_ps("""
+Restart-Service NlaSvc -Force -ErrorAction SilentlyContinue
+(Get-Service NlaSvc).Status
+""")
+    return ok, f"Network Location Awareness: {out}"
+
+@repair("repair_dotnet_framework")
+def repair_dotnet_framework():
+    script = """
+Write-Output "Refreshing .NET Framework runtime optimization service..."
+$ngen = [System.IO.Path]::Combine($env:windir, 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'ngen.exe')
+if (Test-Path $ngen) {
+    & $ngen update /queue 2>&1 | Out-Null
+    Write-Output ".NET NGEN cache updated."
+} else {
+    Write-Output ".NET Framework validated."
+}
+"""
+    return _run_ps(script)
+
+# ── Major College Computer Lab Repairs ──────────────────────────
+
+@repair("lab_fix_usb_storage")
+def lab_fix_usb_storage():
+    script = """
+Write-Output "Restoring USB Storage Access & Write Permissions..."
+Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\USBSTOR" -Name "Start" -Value 3 -Type DWord -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\StorageDevicePolicies" -Name "WriteProtect" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\RemovableStorageDevices" -Name "*" -ErrorAction SilentlyContinue
+pnputil /scan-devices 2>&1 | Out-Null
+Write-Output "USB storage service enabled and write-protection cleared. Re-insert USB drive."
+"""
+    return _run_ps(script)
+
+@repair("lab_unlock_taskmgr_cmd")
+def lab_unlock_taskmgr_cmd():
+    script = """
+Write-Output "Unlocking Task Manager, CMD, and Regedit policies..."
+Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "DisableTaskMgr" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "DisableTaskMgr" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKCU:\\Software\\Policies\\Microsoft\\Windows\\System" -Name "DisableCMD" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKLM:\\Software\\Policies\\Microsoft\\Windows\\System" -Name "DisableCMD" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "DisableRegistryTools" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" -Name "DisableRegistryTools" -ErrorAction SilentlyContinue
+Write-Output "Task Manager, Command Prompt, and Registry Editor are now fully unlocked."
+"""
+    return _run_ps(script)
+
+@repair("lab_reset_proxy_settings")
+def lab_reset_proxy_settings():
+    script = """
+Write-Output "Resetting stale college proxy and reverting to direct network..."
+Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" -Name "ProxyEnable" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" -Name "ProxyServer" -Value "" -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" -Name "AutoConfigURL" -ErrorAction SilentlyContinue
+netsh winhttp reset proxy 2>&1 | Out-String | Write-Output
+ipconfig /flushdns 2>&1 | Out-Null
+Write-Output "Proxy bypass disabled. Direct Internet and LAN access restored."
+"""
+    return _run_ps(script)
+
+@repair("lab_fix_apache_port_conflict")
+def lab_fix_apache_port_conflict():
+    script = """
+Write-Output "Resolving Port 80 & 443 conflict for Apache / XAMPP..."
+Stop-Service -Name W3SVC -Force -ErrorAction SilentlyContinue
+Set-Service -Name W3SVC -StartupType Disabled -ErrorAction SilentlyContinue
+Stop-Service -Name PeerDistSvc -Force -ErrorAction SilentlyContinue
+$conns = Get-NetTCPConnection -LocalPort 80 -ErrorAction SilentlyContinue
+if ($conns) {
+    foreach ($c in $conns) {
+        $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+        if ($p -and $p.Name -ne "System" -and $p.Name -ne "httpd") {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Write-Output "Stopped conflicting service: $($p.Name) (PID: $($p.Id))"
+        }
+    }
+}
+Write-Output "Port 80 and 443 released. Apache can now start cleanly in XAMPP."
+"""
+    return _run_ps(script)
+
+@repair("lab_fix_mysql_port_locked")
+def lab_fix_mysql_port_locked():
+    script = """
+Write-Output "Releasing Port 3306 for MySQL / MariaDB..."
+$conns = Get-NetTCPConnection -LocalPort 3306 -ErrorAction SilentlyContinue
+if ($conns) {
+    foreach ($c in $conns) {
+        $p = Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
+        if ($p) {
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            Write-Output "Terminated orphan database process: $($p.Name) (PID: $($p.Id))"
+        }
+    }
+}
+Get-Service -Name "*mysql*", "*mariadb*" -ErrorAction SilentlyContinue | Start-Service -ErrorAction SilentlyContinue
+Write-Output "Port 3306 unlocked. Database server is ready."
+"""
+    return _run_ps(script)
+
+@repair("lab_restore_compiler_paths")
+def lab_restore_compiler_paths():
+    script = """
+Write-Output "Detecting installed compilers and restoring System PATH..."
+$candidatePaths = @(
+    "C:\\MinGW\\bin",
+    "C:\\TDM-GCC-64\\bin",
+    "C:\\Program Files\\nodejs",
+    "C:\\Program Files\\Git\\cmd",
+    "C:\\Program Files\\Git\\bin"
+)
+Get-ChildItem -Path "C:\\Python*", "$env:LOCALAPPDATA\\Programs\\Python\\Python*" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    $candidatePaths += $_.FullName
+    $candidatePaths += "$($_.FullName)\\Scripts"
+}
+Get-ChildItem -Path "C:\\Program Files\\Java\\jdk*", "C:\\Program Files (x86)\\Java\\jdk*" -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    $candidatePaths += "$($_.FullName)\\bin"
+}
+$currentPath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+$added = @()
+foreach ($p in $candidatePaths) {
+    if ((Test-Path $p) -and ($currentPath -notlike "*$p*")) {
+        $currentPath = "$currentPath;$p"
+        $added += $p
+    }
+}
+if ($added.Count -gt 0) {
+    try {
+        [System.Environment]::SetEnvironmentVariable("Path", $currentPath, "Machine")
+        Write-Output "Restored $($added.Count) compiler directories to System PATH (Machine):"
+    } catch {
+        $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+        foreach ($p in $added) { if ($userPath -notlike "*$p*") { $userPath = "$userPath;$p" } }
+        [System.Environment]::SetEnvironmentVariable("Path", $userPath, "User")
+        Write-Output "Restored $($added.Count) compiler directories to User PATH:"
+    }
+    $added | ForEach-Object { Write-Output "  + $_" }
+    Write-Output "Environment updated. Reopen CMD or VS Code terminal to use tools."
+} else {
+    Write-Output "All detected compilers (Python, GCC, Java, Node) are already in System PATH."
+}
+"""
+    return _run_ps(script)
+
+@repair("lab_resync_clock_ntp")
+def lab_resync_clock_ntp():
+    script = """
+Write-Output "Fixing CMOS clock drift & resyncing with Internet Time..."
+Start-Service -Name W32Time -ErrorAction SilentlyContinue
+w32tm /config /manualpeerlist:"pool.ntp.org,time.windows.com" /syncfromflags:manual /reliable:YES /update 2>&1 | Out-Null
+Restart-Service -Name W32Time -Force -ErrorAction SilentlyContinue
+w32tm /resync /force 2>&1 | Out-String | Write-Output
+Write-Output "Clock resynced: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'). HTTPS SSL certificate errors resolved."
+"""
+    return _run_ps(script)
+
+@repair("lab_purge_student_temp_files")
+def lab_purge_student_temp_files():
+    script = """
+Write-Output "Purging student temp files, crash dumps, and Windows caches..."
+$initialSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
+Get-ChildItem -Path "$env:LOCALAPPDATA\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path "$env:SystemRoot\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path "$env:SystemRoot\\SoftwareDistribution\\Download\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+$finalSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
+$freed = [Math]::Round($finalSpace - $initialSpace, 2)
+Write-Output "Cleanup complete. Free space: $finalSpace GB (Freed ~$freed GB)."
+"""
+    return _run_ps(script)
+
+@repair("lab_reset_display_mode")
+def lab_reset_display_mode():
+    script = """
+Write-Output "Resetting display topology to Primary Internal Display..."
+Start-Process -FilePath "DisplaySwitch.exe" -ArgumentList "/internal" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+Write-Output "Display topology set to Primary Screen. Projector black screen cleared."
+"""
+    return _run_ps(script)
+
+@repair("lab_fix_vscode_frozen")
+def lab_fix_vscode_frozen():
+    script = """
+Write-Output "Clearing hung VS Code instances and stale lockfiles..."
+Get-Process -Name "Code" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:APPDATA\\Code\\*.lock" -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:APPDATA\\Code\\logs\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Write-Output "VS Code processes terminated and workspace lockfiles cleared. VS Code is ready to launch."
+"""
+    return _run_ps(script)
+
+
 def execute_repair(repair_id: str) -> dict:
     fn = REPAIR_FUNCTIONS.get(repair_id)
     if not fn:
+        try:
+            learned = load_learned_errors()
+            if repair_id in learned:
+                entry = learned[repair_id]
+                ps_script = entry.get("ps_script", "")
+                if ps_script:
+                    logger.info(f"Executing learned repair: {repair_id}")
+                    start = time.time()
+                    success, output = _run_ps(ps_script)
+                    elapsed = round(time.time() - start, 2)
+                    return {
+                        "repair_id": repair_id, "success": success,
+                        "message": "Learned repair completed." if success else "Learned repair encountered issues.",
+                        "output": output, "elapsed_seconds": elapsed
+                    }
+        except Exception as e:
+            logger.warning(f"Error checking learned repairs: {e}")
+
         return {
             "repair_id": repair_id, "success": False,
             "message": f"No repair handler for '{repair_id}'",

@@ -81,14 +81,17 @@ class BackgroundMonitor:
                 "severity": "HIGH",
                 "description": "An unexpected fatal memory access violation occurred in a background process.",
                 "technical": "Exception Code: 0xc0000005. Faulting module: unknown.dll.",
-                "repair_id": "unknown_error"
+                "repair_id": "unknown_error",
+                "is_demo": True
             }, force=True)
             return
             
         error_def = ERROR_CATALOG.get(error_id)
         if error_def:
             logger.info(f"[DEMO] Injecting error: {error_id}")
-            self._trigger_alert(error_def, force=True)
+            payload = dict(error_def)
+            payload["is_demo"] = True
+            self._trigger_alert(payload, force=True)
 
     def mark_resolved(self, error_id: str, cooldown_seconds: int = ALERT_COOLDOWN_SECONDS):
         """Called by the UI after a user fixes or ignores an error.

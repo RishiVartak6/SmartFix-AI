@@ -1,11 +1,11 @@
-; ─────────────────────────────────────────────────────────────────────────────
+; =============================================================================
 ; SmartFix AI — Inno Setup Installer Script
 ; Builds: SmartFix_Setup.exe
 ; Requirements: Inno Setup 6+ (https://jrsoftware.org/isdl.php)
-; ─────────────────────────────────────────────────────────────────────────────
+; =============================================================================
 
 #define MyAppName       "SmartFix AI"
-#define MyAppVersion    "1.0.0"
+#define MyAppVersion    "1.1.0"
 #define MyAppPublisher  "SmartFix Team"
 #define MyAppURL        "https://github.com/RishiVartak6/SmartFix-AI"
 #define MyAppExeName    "SmartFix AI.exe"
@@ -39,53 +39,61 @@ UninstallDisplayName      = {#MyAppName}
 CloseApplications         = yes
 RestartIfNeededByRun      = no
 ChangesEnvironment        = yes
+; Minimum Windows 10
+MinVersion                = 10.0.17763
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon";     Description: "Create a &Desktop shortcut";           GroupDescription: "Additional shortcuts:"
-Name: "startupicon";     Description: "Start SmartFix AI with &Windows";      GroupDescription: "Additional shortcuts:"
+Name: "desktopicon"; Description: "Create a &Desktop shortcut";      GroupDescription: "Additional shortcuts:"
+Name: "startupicon"; Description: "Start SmartFix AI with &Windows"; GroupDescription: "Additional shortcuts:"
 
 [Files]
-; ── SmartFix application files ──────────────────────────────────────────────
-Source: "{#SourcePath}\smartfix_app.py";          DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\SmartFix AI.exe";          DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\requirements.txt";         DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\monitor\*";                DestDir: "{app}\monitor"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourcePath}\data\*";                   DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
-Source: "{#SourcePath}\install_helper.ps1";       DestDir: "{app}"; Flags: ignoreversion
+; ── SmartFix application files ────────────────────────────────────────────────
+Source: "{#SourcePath}\smartfix_app.py";          DestDir: "{app}";         Flags: ignoreversion
+Source: "{#SourcePath}\SmartFix AI.exe";          DestDir: "{app}";         Flags: ignoreversion
+Source: "{#SourcePath}\requirements.txt";         DestDir: "{app}";         Flags: ignoreversion
+Source: "{#SourcePath}\install_helper.ps1";       DestDir: "{app}";         Flags: ignoreversion
+
+; ── Monitor module (all Python files including new Lab Monitor modules) ────────
+Source: "{#SourcePath}\monitor\*.py";             DestDir: "{app}\monitor"; Flags: ignoreversion
+Source: "{#SourcePath}\monitor\__init__.py";      DestDir: "{app}\monitor"; Flags: ignoreversion
+
+; ── Data directory (existing data, skip if source doesn't exist) ──────────────
+Source: "{#SourcePath}\data\*";                   DestDir: "{app}\data";    Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Dirs]
 Name: "{app}\data"
 Name: "{app}\logs"
 Name: "{app}\monitor"
+Name: "{app}\monitor\__pycache__"
 
 [Icons]
-Name: "{group}\{#MyAppName}";            Filename: "{app}\{#MyAppExeName}"; Comment: "SmartFix AI — Windows Error Monitor"
+Name: "{group}\{#MyAppName}";            Filename: "{app}\{#MyAppExeName}"; Comment: "SmartFix AI — Windows Error Monitor & Lab Monitor"
 Name: "{group}\Uninstall {#MyAppName}";  Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}";      Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-; Auto-start with Windows
+; Auto-start with Windows (set by install_helper.ps1 but also added here as fallback)
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "SmartFix AI"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startupicon
 
 [Run]
-; Run the PowerShell install helper (downloads Python, packages, Ollama, llama3)
+; ── Main dependency installer (Python + packages + Ollama + llama3 + firewall) ──
 Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File ""{app}\install_helper.ps1"" -InstallDir ""{app}"""; \
-    StatusMsg: "Installing dependencies (Python, PyQt6, Ollama)... This may take 5-15 minutes depending on your internet speed."; \
-    Flags: runasoriginaluser waituntilterminated; \
-    Description: "Install Python, PyQt6, and Ollama AI engine"
+    StatusMsg: "Installing Python, PyQt6, Ollama, llama3 model and Lab Monitor firewall rules... (may take 10-30 min)"; \
+    Flags: runascurrentuser waituntilterminated; \
+    Description: "Install all dependencies (Python, PyQt6, Ollama AI, llama3 model)"
 
-; Launch SmartFix AI after installation
+; ── Launch after install ───────────────────────────────────────────────────────
 Filename: "{app}\{#MyAppExeName}"; \
     Description: "Launch {#MyAppName} now"; \
     Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SmartFix AI' -ErrorAction SilentlyContinue"""; \
+    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SmartFix AI' -ErrorAction SilentlyContinue; Remove-NetFirewallRule -DisplayName 'SmartFix-Lab-*' -ErrorAction SilentlyContinue"""; \
     Flags: runhidden
 
 [UninstallDelete]
@@ -95,29 +103,7 @@ Type: filesandordirs; Name: "{app}\logs"
 Type: filesandordirs; Name: "{app}\install_log.txt"
 
 [Code]
-var
-  DownloadPage: TDownloadWizardPage;
-
 function InitializeSetup(): Boolean;
 begin
   Result := True;
-end;
-
-procedure InitializeWizard;
-begin
-  DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc), nil);
-end;
-
-function NextButtonClick(CurPageID: Integer): Boolean;
-begin
-  Result := True;
-  if CurPageID = wpReady then begin
-    DownloadPage.Clear;
-    DownloadPage.Show;
-    try
-      // No bundled downloads — install_helper.ps1 handles everything at runtime
-    finally
-      DownloadPage.Hide;
-    end;
-  end;
 end;

@@ -121,6 +121,27 @@ DEMO_SCENARIOS: Dict[str, DemoScenario] = {
         inject_fn=lambda: _stop_service("BITS"),
         cleanup_fn=lambda: _start_service("BITS"),
     ),
+    "lab_taskmgr_cmd_regedit_disabled": DemoScenario(
+        error_id="lab_taskmgr_cmd_regedit_disabled",
+        name="Task Manager / CMD Disabled by Policy",
+        description="Simulates a student prank or malware locking Task Manager & Command Prompt. SmartFix unlocks all administrative tools.",
+        inject_fn=lambda: True,
+        cleanup_fn=lambda: True,
+    ),
+    "lab_proxy_stuck_offline": DemoScenario(
+        error_id="lab_proxy_stuck_offline",
+        name="College Proxy Refusing Connections",
+        description="Simulates an unreachable college proxy blocking lab internet access. SmartFix resets proxy and restores LAN/WAN.",
+        inject_fn=lambda: True,
+        cleanup_fn=lambda: True,
+    ),
+    "lab_usb_storage_blocked": DemoScenario(
+        error_id="lab_usb_storage_blocked",
+        name="Student USB Flash Drive Blocked",
+        description="Simulates USB storage write-protection and driver block. SmartFix restores USB permissions and scans hardware.",
+        inject_fn=lambda: True,
+        cleanup_fn=lambda: True,
+    ),
 }
 
 DEMO_LIST = list(DEMO_SCENARIOS.values())
