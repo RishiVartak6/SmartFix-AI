@@ -182,7 +182,12 @@ class LabClientAgent:
         try:
             from monitor.repair_engine import execute_repair
             result = execute_repair(error_id)
-            return {"success": True, "message": result or "Repair completed"}
+            if isinstance(result, dict):
+                return {
+                    "success": bool(result.get("success", False)),
+                    "message": result.get("output") or result.get("message") or "Repair completed"
+                }
+            return {"success": True, "message": str(result)}
         except Exception as ex:
             return {"success": False, "message": str(ex)}
 

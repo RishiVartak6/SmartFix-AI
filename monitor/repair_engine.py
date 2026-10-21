@@ -1713,7 +1713,22 @@ Write-Output "Temporary files purge complete. Freed approximately $freedMb MB of
 
 
 def execute_repair(repair_id: str) -> dict:
-    fn = REPAIR_FUNCTIONS.get(repair_id)
+    target_id = repair_id
+    fn = REPAIR_FUNCTIONS.get(target_id)
+    if not fn:
+        try:
+            from monitor.error_catalog import ERROR_CATALOG
+            cat = ERROR_CATALOG.get(repair_id)
+            if cat and cat.get("repair_id"):
+                target_id = cat["repair_id"]
+                fn = REPAIR_FUNCTIONS.get(target_id)
+        except Exception:
+            pass
+
+    if not fn and (repair_id in ("temp_files_overflow", "purge_temp_cache_files", "lab_disk_full_student_temps")):
+        fn = REPAIR_FUNCTIONS.get("purge_temp_cache_files") or REPAIR_FUNCTIONS.get("fix_temp_cleanup")
+        target_id = "purge_temp_cache_files" if "purge_temp_cache_files" in REPAIR_FUNCTIONS else "fix_temp_cleanup"
+
     if not fn:
         try:
             learned = load_learned_errors()
@@ -1738,7 +1753,7 @@ def execute_repair(repair_id: str) -> dict:
             "message": f"No repair handler for '{repair_id}'",
             "output": "This error type does not have an automated repair yet. Please fix manually."
         }
-    logger.info(f"Executing repair: {repair_id}")
+    logger.info(f"Executing repair: {target_id} (requested: {repair_id})")
     start = time.time()
     try:
         success, output = fn()
@@ -1746,7 +1761,7 @@ def execute_repair(repair_id: str) -> dict:
         success, output = False, str(e)
     elapsed = round(time.time() - start, 2)
     return {
-        "repair_id": repair_id, "success": success,
+        "repair_id": target_id, "success": success,
         "message": "Repair completed." if success else "Repair encountered issues.",
         "output": output, "elapsed_seconds": elapsed
     }

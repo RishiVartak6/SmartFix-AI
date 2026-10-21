@@ -48,17 +48,17 @@ SmartFix AI uses the **exact same installer** across all computers in the local 
 1. **Any PC can be Admin (Central Controller)**:
    - Go to **🖥 Lab Monitor** in the sidebar.
    - Click **`🛡 Set as Admin (Central Controller)`** or use **`⇄ Switch Role`**.
-   - Authenticate with the Admin Passkey (default: `admin123`).
+   - Authenticate with the Admin Passkey.
    - The dashboard opens the Lab Central Controller, listening for workstations and displaying live telemetry.
 
 2. **Any PC can be a Client (Workstation)**:
    - Go to **🖥 Lab Monitor** in the sidebar.
    - Click **`💻 Set as Client (Workstation)`**.
-   - Enter the seat name (`PC-01`, `PC-02`, etc.).
+   - Enter a unique seat name (defaults to `PC-<HOSTNAME>`).
    - The workstation automatically broadcasts its presence and telemetry on the LAN (UDP 7772).
 
 3. **Dynamic Role Switching & Demotion**:
-   - An Admin PC can switch back to Client mode at any time using **`💻 Switch this PC to Client`** or **`⇄ Switch Role`**.
+   - An Admin PC can switch back to Client mode at any time using **`💻 Switch this PC to Client`** or **`⇄ Switch Role`** (requires admin passkey).
    - A Client PC can be promoted to Admin anytime by clicking **`🛡 Promote this PC to Admin`** and entering the Admin Passkey.
 
 4. **Passkey Management & Authentication**:
@@ -67,7 +67,7 @@ SmartFix AI uses the **exact same installer** across all computers in the local 
 
 5. **Remote Diagnostic & One-Click Repair**:
    - If any workstation PC encounters an issue, its card flags the error on the Admin's screen.
-   - The administrator clicks **`🔧 Fix Remotely`** to execute an authenticated administrative repair over TCP 7771.
+   - The administrator clicks **`🔧 Fix Remotely`** or uses the on-demand maintenance toolbox to execute authenticated repairs over TCP 7771.
 
 ---
 
@@ -77,14 +77,13 @@ SmartFix AI uses the **exact same installer** across all computers in the local 
 SmartFix-AI/
 ├── smartfix_app.py          ← Main application (PyQt6 UI + system tray + lab page)
 ├── SmartFix AI.exe          ← C# .NET launcher stub with UAC administrator manifest
-├── CHATGPT_PROJECT_CONTEXT.md ← Master context & architecture prompt for AI models
 ├── BUILD_INSTALLER.bat      ← 1-Click Inno Setup builder script
 ├── SmartFix_Installer.iss   ← Inno Setup configuration script
 ├── install_helper.ps1       ← Silent dependency installer (Python, Ollama, model, firewall)
 ├── requirements.txt         ← Python dependencies
 ├── monitor/
 │   ├── monitor.py           ← Multi-threaded background monitoring engine
-│   ├── error_catalog.py     ← 170 Windows & College Lab error definitions
+│   ├── error_catalog.py     ← 170 Windows error definitions
 │   ├── repair_engine.py     ← 100% verified PowerShell repair functions
 │   ├── repair_advanced.py   ← BCD, bootmgr, WMI salvage, and registry repairs
 │   ├── difficult_errors.py  ← BSOD bugcheck analyzers & crash dump definitions
@@ -95,10 +94,8 @@ SmartFix-AI/
 │   ├── learned_repairs.py   ← Self-learning database manager (learned_errors.json)
 │   ├── ai_dialog.py         ← Interactive AI technical assistant dialog
 │   ├── demo_mode.py         ← Safe error simulation engine for judge presentations
-│   ├── demo_window.py       ← Standalone demo window
 │   ├── history.py           ← SQLite database logger (smartfix_history.db)
-│   ├── network_diag.py      ← Network ping, DNS, and latency tests
-│   └── system_report.py     ← HTML report exporter
+│   └── network_diag.py      ← Network ping, DNS, and latency tests
 └── data/
     ├── smartfix_history.db  ← SQLite database of repair history
     ├── learned_errors.json  ← Persisted AI-learned repairs

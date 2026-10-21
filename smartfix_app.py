@@ -1957,6 +1957,7 @@ class MainWindow(QMainWindow):
                 row.addWidget(lbl)
 
         # Error count badge
+        # Error count badge
         if err_count > 0:
             err_badge = QLabel(f"⚠ {err_count} error{'s' if err_count != 1 else ''}")
             err_badge.setStyleSheet(
@@ -1964,8 +1965,15 @@ class MainWindow(QMainWindow):
                 f"border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: bold;"
             )
             row.addWidget(err_badge)
+        elif online:
+            ok_badge = QLabel("✓ Healthy")
+            ok_badge.setStyleSheet(
+                f"background: {GREEN}20; color: {GREEN}; border: 1px solid {GREEN}40; "
+                f"border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: bold;"
+            )
+            row.addWidget(ok_badge)
 
-        # Refresh button
+        # Actions row
         if online:
             refresh_btn = QPushButton("↻")
             refresh_btn.setFixedSize(28, 28)
@@ -1980,11 +1988,12 @@ class MainWindow(QMainWindow):
             )
             row.addWidget(refresh_btn)
 
-        # View errors button (only if errors exist)
-        if err_count > 0 and online:
-            view_btn = QPushButton("View Errors")
+            view_btn = QPushButton(f"⚠ Fix Errors ({err_count})" if err_count > 0 else "🔧 Fix & Manage")
+            btn_bg = f"{ORANGE}25" if err_count > 0 else BG_CARD2
+            btn_col = ORANGE if err_count > 0 else TEXT1
+            btn_border = f"{ORANGE}60" if err_count > 0 else BORDER
             view_btn.setStyleSheet(
-                f"background: {ORANGE}20; color: {ORANGE}; border: 1px solid {ORANGE}50; "
+                f"background: {btn_bg}; color: {btn_col}; border: 1px solid {btn_border}; "
                 f"border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: bold;"
             )
             view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1996,45 +2005,71 @@ class MainWindow(QMainWindow):
         return card
 
     def _lab_show_errors_dialog(self, client: ClientInfo):
-        """Show a dialog listing errors on the client PC with remote-repair buttons."""
-        from PyQt6.QtWidgets import QDialog, QScrollArea
+        """Show a dialog listing errors on the client PC with remote-repair buttons and maintenance tools."""
+        from PyQt6.QtWidgets import QDialog, QScrollArea, QComboBox
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"Errors on {client.seat} ({client.ip})")
-        dlg.setMinimumSize(600, 400)
+        dlg.setWindowTitle(f"Diagnostics & Remote Repair — {client.seat} ({client.ip})")
+        dlg.setMinimumSize(640, 520)
         dlg.setStyleSheet(self.styleSheet())
         outer = QVBoxLayout(dlg)
-        outer.setContentsMargins(20, 16, 20, 16)
-        outer.setSpacing(10)
+        outer.setContentsMargins(22, 18, 22, 18)
+        outer.setSpacing(12)
 
-        title = QLabel(f"⚠  Errors on {client.seat}")
+        # Title and header
+        title_row = QHBoxLayout()
+        title = QLabel(f"🖥  {client.seat}  ·  Remote Error Management")
         title.setStyleSheet(f"color: {TEXT1}; font-size: 16px; font-weight: bold;")
-        outer.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch()
+
+        ip_tag = QLabel(f"IP: {client.ip}")
+        ip_tag.setStyleSheet(f"color: {TEXT2}; font-size: 12px; background: {BG_CARD2}; border: 1px solid {BORDER}; border-radius: 4px; padding: 2px 8px;")
+        title_row.addWidget(ip_tag)
+        outer.addLayout(title_row)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         body = QWidget()
         body_layout = QVBoxLayout(body)
-        body_layout.setSpacing(8)
+        body_layout.setSpacing(10)
+
+        # Section 1: Active Detected Errors
+        active_sec = QLabel(f"LIVE DETECTED ISSUES ({len(client.errors)})")
+        active_sec.setStyleSheet(f"color: {ORANGE}; font-size: 10px; font-weight: bold; letter-spacing: 0.08em;")
+        body_layout.addWidget(active_sec)
 
         if not client.errors:
-            no_err = QLabel("No errors reported.")
-            no_err.setStyleSheet(f"color: {GREEN}; font-size: 13px;")
-            body_layout.addWidget(no_err)
+            no_err_card = QFrame()
+            no_err_card.setStyleSheet(f"background: {GREEN}15; border: 1px solid {GREEN}40; border-radius: 8px;")
+            neh = QHBoxLayout(no_err_card)
+            neh.setContentsMargins(14, 10, 14, 10)
+            neh.addWidget(QLabel("✅ No active errors reported by this workstation. System is healthy."))
+            body_layout.addWidget(no_err_card)
         else:
+            # Fix all errors button
+            fix_all_btn = QPushButton(f"🚀 Fix All {len(client.errors)} Errors on {client.seat}")
+            fix_all_btn.setStyleSheet(f"background: {GREEN}; color: black; font-weight: bold; padding: 8px 16px; border-radius: 6px; border: none;")
+            fix_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            def fix_all():
+                for err in client.errors:
+                    eid = err.get("repair_id") or err.get("id", "")
+                    self._lab_remote_repair(client.seat, eid, fix_all_btn)
+            fix_all_btn.clicked.connect(fix_all)
+            body_layout.addWidget(fix_all_btn)
+
             for err in client.errors:
                 eframe = QFrame()
-                eframe.setStyleSheet(
-                    f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 8px;"
-                )
+                eframe.setStyleSheet(f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 8px;")
                 erow = QHBoxLayout(eframe)
-                erow.setContentsMargins(14, 10, 10, 10)
+                erow.setContentsMargins(14, 10, 12, 10)
                 erow.setSpacing(10)
 
                 ecol = QVBoxLayout()
                 ecol.setSpacing(2)
                 ename = QLabel(err.get("name", err.get("id", "Unknown")))
-                ename.setStyleSheet(f"color: {TEXT1}; font-weight: bold; font-size: 12px; background: transparent; border: none;")
+                ename.setStyleSheet(f"color: {TEXT1}; font-weight: bold; font-size: 13px; background: transparent; border: none;")
                 ecol.addWidget(ename)
                 edesc = QLabel(err.get("description", ""))
                 edesc.setStyleSheet(f"color: {TEXT2}; font-size: 11px; background: transparent; border: none;")
@@ -2055,9 +2090,73 @@ class MainWindow(QMainWindow):
                 erow.addWidget(fix_btn)
                 body_layout.addWidget(eframe)
 
+        # Section 2: Quick Remote Fixes & Maintenance
+        maint_sec = QLabel("ON-DEMAND REMOTE FIXES & CLEANUP")
+        maint_sec.setStyleSheet(f"color: {TEXT3}; font-size: 10px; font-weight: bold; letter-spacing: 0.08em; margin-top: 10px;")
+        body_layout.addWidget(maint_sec)
+
+        maint_card = QFrame()
+        maint_card.setStyleSheet(f"background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 8px;")
+        maint_layout = QVBoxLayout(maint_card)
+        maint_layout.setContentsMargins(14, 12, 14, 12)
+        maint_layout.setSpacing(10)
+
+        maint_desc = QLabel("Select an error repair to run directly on this client workstation:")
+        maint_desc.setStyleSheet(f"color: {TEXT2}; font-size: 11px;")
+        maint_layout.addWidget(maint_desc)
+
+        action_row = QHBoxLayout()
+        action_row.setSpacing(10)
+
+        repair_combo = QComboBox()
+        repair_combo.setStyleSheet(f"""
+            QComboBox {{
+                background: {BG_MAIN}; color: {TEXT1}; border: 1px solid {BORDER};
+                border-radius: 6px; padding: 6px 12px; font-size: 12px; min-width: 320px;
+            }}
+            QComboBox QAbstractItemView {{
+                background: {BG_CARD}; color: {TEXT1}; selection-background-color: {ACCENT};
+            }}
+        """)
+        common_repairs = [
+            ("Purge Temporary Files & Cache Clutter", "purge_temp_cache_files"),
+            ("Reset Network, Flush DNS & TCP Stack", "fix_network_dns"),
+            ("Restart Windows Audio Service", "restart_audio_services"),
+            ("Reset Windows Update Services", "restart_windows_update"),
+            ("Restart Print Spooler Service", "restart_print_spooler"),
+            ("Fix High CPU / Reset WMI Repository", "fix_wmi_high_cpu"),
+            ("Clear VS Code Hung Processes & Lockfiles", "lab_fix_vscode_frozen"),
+            ("Reset Display Topology (Fix Black Screen)", "lab_reset_display_mode"),
+            ("Restore USB Storage Access & Permissions", "lab_fix_usb_storage"),
+            ("Resync System Clock via NTP", "lab_resync_clock_ntp"),
+            ("Unblock Task Manager, Regedit & CMD", "lab_unlock_taskmgr_cmd"),
+            ("Run System File Checker (SFC Scan)", "fix_sfc_scan"),
+        ]
+        for name, rep_id in common_repairs:
+            repair_combo.addItem(name, rep_id)
+        action_row.addWidget(repair_combo, 1)
+
+        apply_fix_btn = QPushButton("⚡ Apply Remote Fix")
+        apply_fix_btn.setStyleSheet(f"background: {ACCENT}; color: white; font-weight: bold; padding: 7px 16px; border-radius: 6px; border: none; font-size: 12px;")
+        apply_fix_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        apply_fix_btn.clicked.connect(
+            lambda _, seat=client.seat, combo=repair_combo, btn=apply_fix_btn:
+                self._lab_remote_repair(seat, combo.currentData(), btn)
+        )
+        action_row.addWidget(apply_fix_btn)
+        maint_layout.addLayout(action_row)
+        body_layout.addWidget(maint_card)
+
         body_layout.addStretch()
         scroll.setWidget(body)
         outer.addWidget(scroll)
+
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet(f"background: {BG_CARD2}; color: {TEXT1}; border: 1px solid {BORDER}; border-radius: 6px; padding: 6px 18px;")
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.clicked.connect(dlg.accept)
+        outer.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight)
+
         dlg.exec()
 
     def _lab_remote_repair(self, seat: str, error_id: str, btn: QPushButton):
@@ -2070,6 +2169,8 @@ class MainWindow(QMainWindow):
         def on_result(result):
             success = result.get("success", False)
             msg     = result.get("message", "")
+            btn.setText("Sent ✓")
+            btn.setEnabled(True)
             self._alert_signal.emit({
                 "__type__": "lab_repair_result",
                 "seat": seat,
@@ -2078,6 +2179,8 @@ class MainWindow(QMainWindow):
                 "message": msg,
                 "btn_ref": id(btn),
             })
+            if self._lab_admin:
+                self._lab_admin.poll_client_now(seat)
 
         self._lab_admin.request_repair(seat, error_id, on_result=on_result)
 
@@ -2374,6 +2477,10 @@ class MainWindow(QMainWindow):
         if self._demo:
             self._demo.cleanup_active()
 
+        self._alerts = [a for a in self._alerts if a.get("id") != eid]
+        if self._lab_mode == "client" and self._lab_agent:
+            self._lab_agent.update_errors(list(self._alerts))
+
         if error_info.get("repair_id") == "unknown_error":
             dlg = AIAssistantDialog(error_info, self)
             dlg.exec()
@@ -2403,6 +2510,11 @@ class MainWindow(QMainWindow):
         # Clean up any active demo simulation (e.g. restore audio/services)
         if self._demo:
             self._demo.cleanup_active()
+
+        self._alerts = [a for a in self._alerts if a.get("id") != eid]
+        if self._lab_mode == "client" and self._lab_agent:
+            self._lab_agent.update_errors(list(self._alerts))
+
         if error_info.get("repair_id") == "unknown_error":
             dlg = AIAssistantDialog(error_info, self)
             dlg.exec()
@@ -2428,6 +2540,11 @@ class MainWindow(QMainWindow):
             # Re-enable alerting after standard cooldown
             if self._monitor:
                 self._monitor.mark_resolved(eid, cooldown_seconds=600)
+
+        self._alerts = [a for a in self._alerts if a.get("id") != eid]
+        if self._lab_mode == "client" and self._lab_agent:
+            self._lab_agent.update_errors(list(self._alerts))
+
         if self._alert_count == 0:
             self.no_alerts_lbl.setVisible(True)
             self.health_widgets["errors"].setText("None")
@@ -2440,6 +2557,9 @@ class MainWindow(QMainWindow):
                 w.setParent(None)
         self._alert_count = 0
         self._active_alert_ids.clear()
+        self._alerts.clear()
+        if self._lab_mode == "client" and self._lab_agent:
+            self._lab_agent.update_errors([])
         if self._demo:
             self._demo.cleanup_active()
         self.card_alerts.set_value("0")
