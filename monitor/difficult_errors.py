@@ -266,11 +266,11 @@ DIFFICULT_ERRORS = {
 
     
     "temp_files_overflow": {
-        "id": "temp_files_overflow", "name": "Temp Files Filling Disk",
-        "severity": "MEDIUM", "category": "Performance",
-        "description": "Temporary files are consuming significant disk space, slowing down the system. Cleaning temp folders will free space.",
-        "technical": "%TEMP% / C:\\Windows\\Temp — excessive size",
-        "detection": {"type": "metric", "metric": "disk_usage_percent", "threshold": 80.0},
+        "id": "temp_files_overflow", "name": "Excessive Temporary Files & Cache Clutter",
+        "severity": "MEDIUM", "category": "Storage & Performance",
+        "description": "Temporary folders and application caches have accumulated significant clutter, degrading disk performance and consuming drive space.",
+        "technical": "%TEMP% and %LOCALAPPDATA%\\Temp — excessive accumulated files",
+        "detection": {"type": "temp_files", "threshold_mb": 500, "threshold_files": 1200},
         "repair_id": "fix_temp_cleanup", "user_permission_required": False,
     },
 

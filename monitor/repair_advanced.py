@@ -326,10 +326,17 @@ Write-Output "(Note: This will disable WSL2, Docker, and Windows Sandbox. Run 'b
 @repair("fix_temp_cleanup")
 def fix_temp_cleanup():
     ok, out = _run_ps("""
-Write-Output "Cleaning Temporary Files..."
+Write-Output "Cleaning Temporary Files, Cache Dumps, and Junk Clutter..."
+$initialSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
 Remove-Item -Path "$env:TEMP\\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:LOCALAPPDATA\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "$env:SystemRoot\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue
-Write-Output "Temporary folders emptied."
+$demoJunk = Join-Path $env:TEMP "SmartFix_Demo_TempJunk"
+if (Test-Path $demoJunk) { Remove-Item -Path $demoJunk -Recurse -Force -ErrorAction SilentlyContinue }
+Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+$finalSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
+$freed = [Math]::Round($finalSpace - $initialSpace, 2)
+Write-Output "Temporary folders emptied and caches purged. Free space on C: $finalSpace GB (Freed ~$freed GB)."
 """)
     return True, out
 

@@ -117,6 +117,34 @@ def _restore_audio_service():
         logger.warning(f"[DEMO] Volume unmute error: {e}")
 
 
+def _inject_temp_files() -> bool:
+    """Create simulated temporary clutter files."""
+    try:
+        import os
+        junk_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "SmartFix_Demo_TempJunk")
+        os.makedirs(junk_dir, exist_ok=True)
+        for i in range(12):
+            fp = os.path.join(junk_dir, f"cache_dump_{i:03d}.tmp")
+            with open(fp, "wb") as f:
+                f.write(b"0" * (1024 * 1024 * 2))  # 24MB total clutter
+        logger.info(f"[DEMO] Created temp clutter in {junk_dir}")
+    except Exception as e:
+        logger.warning(f"[DEMO] Temp clutter creation error: {e}")
+    return True
+
+
+def _cleanup_temp_files():
+    """Remove simulated temp clutter files."""
+    try:
+        import os, shutil
+        junk_dir = os.path.join(os.environ.get("TEMP", "C:\\Temp"), "SmartFix_Demo_TempJunk")
+        if os.path.exists(junk_dir):
+            shutil.rmtree(junk_dir, ignore_errors=True)
+            logger.info(f"[DEMO] Cleaned up {junk_dir}")
+    except Exception as e:
+        logger.warning(f"[DEMO] Temp clutter cleanup error: {e}")
+
+
 # ─── Demo Scenarios ────────────────────────────────────────────────────────────
 
 DEMO_SCENARIOS: Dict[str, DemoScenario] = {
@@ -196,6 +224,13 @@ DEMO_SCENARIOS: Dict[str, DemoScenario] = {
         description="Simulates USB storage write-protection and driver block via Windows policy. SmartFix restores USB permissions.",
         inject_fn=lambda: True,
         cleanup_fn=lambda: True,
+    ),
+    "temp_files_overflow": DemoScenario(
+        error_id="temp_files_overflow",
+        name="Excessive Temporary Files & Cache Clutter",
+        description="Simulates gigabytes of temporary junk files and application cache filling the system drive. SmartFix detects the clutter and purges temp folders safely.",
+        inject_fn=_inject_temp_files,
+        cleanup_fn=_cleanup_temp_files,
     ),
 }
 

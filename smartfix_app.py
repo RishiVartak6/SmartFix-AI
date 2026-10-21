@@ -39,7 +39,6 @@ from monitor.repair_engine import execute_repair
 
 from monitor.history import get_history, get_stats, clear_history, log_repair, log_ignore, log_detection, get_stats, clear_history
 from monitor.network_diag import run_full_diagnostics
-from monitor.system_report import save_report, generate_html_report
 import webbrowser
 
 from monitor.ai_dialog import AIAssistantDialog
@@ -737,8 +736,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self._make_demo_page())    # 3
         self.stack.addWidget(self._make_history_page()) # 4
         self.stack.addWidget(self._make_network_page()) # 5
-        self.stack.addWidget(self._make_report_page())  # 6
-        self.stack.addWidget(self._make_lab_page())     # 7
+        self.stack.addWidget(self._make_lab_page())     # 6
         root.addWidget(self.stack, 1)
 
     def _make_sidebar(self):
@@ -815,8 +813,7 @@ class MainWindow(QMainWindow):
             ("Demo Mode",     3),
             ("History",       4),
             ("Network",       5),
-            ("System Report", 6),
-            ("Lab Monitor",   7),
+            ("Lab Monitor",   6),
         ]
 
         nav_wrap = QWidget()
@@ -1245,48 +1242,6 @@ class MainWindow(QMainWindow):
                 self._alert_signal.emit({"type": "net_done", "res": res})
             except Exception as e:
                 self._alert_signal.emit({"type": "net_err", "err": str(e)})
-        threading.Thread(target=runner, daemon=True).start()
-
-    def _make_report_page(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(28, 24, 28, 24)
-        
-        title = QLabel("System Health Report")
-        title.setStyleSheet(f"color: {TEXT1}; font-size: 22px; font-weight: bold;")
-        layout.addWidget(title)
-        
-        desc = QLabel("Generate a comprehensive HTML report covering Hardware, Software, Security, and Repair History.")
-        desc.setStyleSheet(f"color: {TEXT2}; font-size: 13px;")
-        layout.addWidget(desc)
-        
-        self.rep_btn = QPushButton("Generate HTML Report")
-        self.rep_btn.setStyleSheet(f"background: {ACCENT}; color: white; padding: 12px 24px; font-weight: bold; font-size: 14px; border-radius: 8px; border: none; margin-top: 10px; width: 250px;")
-        self.rep_btn.setFixedWidth(250)
-        self.rep_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.rep_btn.clicked.connect(self._run_report)
-        layout.addWidget(self.rep_btn)
-        
-        self.rep_log = QTextEdit()
-        self.rep_log.setReadOnly(True)
-        self.rep_log.setPlaceholderText("Click 'Generate HTML Report' to create and open the report in your browser...")
-        layout.addWidget(self.rep_log)
-        
-        return page
-
-    def _run_report(self):
-        self.rep_btn.setEnabled(False)
-        self.rep_btn.setText("Generating...")
-        self.rep_log.clear()
-        self.rep_log.append("Gathering system telemetry...")
-        
-        def runner():
-            try:
-                records = get_history(50)
-                path = save_report(history_records=records)
-                self._alert_signal.emit({"type": "rep_done", "path": path})
-            except Exception as e:
-                self._alert_signal.emit({"type": "rep_err", "err": str(e)})
         threading.Thread(target=runner, daemon=True).start()
 
 
@@ -1819,17 +1774,30 @@ class MainWindow(QMainWindow):
 
         self._metric_timer = QTimer(self)
         self._metric_timer.timeout.connect(self._update_metrics)
-        self._metric_timer.start(4000)   # update every 4 seconds
-        QTimer.singleShot(1200, self._update_metrics)  # first reading after 1.2s warmup
+        self._metric_timer.start(1500)   # Live update every 1.5s
+        QTimer.singleShot(300, self._update_metrics)  # Fast first reading
 
     def _update_metrics(self):
-        """Run metric collection on a background thread, post results back to UI."""
+        """Run live metric collection on a background thread, post results back to UI."""
         def _collect():
             try:
                 import psutil
-                cpu  = psutil.cpu_percent(interval=1)   # blocking 1s sample — accurate
-                mem  = psutil.virtual_memory()
+                cpu = psutil.cpu_percent(interval=None)
+                cores = psutil.cpu_count(logical=True) or 1
+                mem = psutil.virtual_memory()
                 disk = psutil.disk_usage('C:\\')
+
+                # Critical Windows services check
+                critical_svcs = ['Spooler', 'WSearch', 'AudioSrv', 'wuauserv', 'bthserv']
+                running_svcs = 0
+                for s in critical_svcs:
+                    try:
+                        svc = psutil.win_service_get(s)
+                        if svc.status() == 'running':
+                            running_svcs += 1
+                    except Exception:
+                        pass
+
                 net_ok = True
                 try:
                     import socket
@@ -1837,17 +1805,36 @@ class MainWindow(QMainWindow):
                     socket.gethostbyname("8.8.8.8")
                 except Exception:
                     net_ok = False
-                uptime_m = int((time.time() - self._start_time) / 60)
+
+                # System uptime matching Windows Task Manager
+                boot_time = psutil.boot_time()
+                uptime_s = int(time.time() - boot_time)
+                days = uptime_s // 86400
+                hrs = (uptime_s % 86400) // 3600
+                mins = (uptime_s % 3600) // 60
+                if days > 0:
+                    uptime_str = f"{days}d {hrs}h {mins}m"
+                elif hrs > 0:
+                    uptime_str = f"{hrs}h {mins}m"
+                else:
+                    uptime_str = f"{mins}m"
+
                 self._alert_signal.emit({
                     "__type__": "metric_update",
-                    "cpu":  cpu,
-                    "ram":  mem.percent,
-                    "disk": disk.percent,
+                    "cpu": cpu,
+                    "cores": cores,
+                    "ram_pct": mem.percent,
+                    "ram_used_gb": mem.used / (1024**3),
+                    "ram_total_gb": mem.total / (1024**3),
+                    "disk_pct": disk.percent,
+                    "disk_free_gb": disk.free / (1024**3),
+                    "svcs_running": running_svcs,
+                    "svcs_total": len(critical_svcs),
                     "net_ok": net_ok,
-                    "uptime_m": uptime_m,
+                    "uptime_str": uptime_str,
                 })
             except Exception as e:
-                logger.error(f"Metric collect failed: {e}")
+                logger.error(f"Live metric collect failed: {e}")
 
         t = threading.Thread(target=_collect, daemon=True)
         t.start()
@@ -1859,41 +1846,60 @@ class MainWindow(QMainWindow):
 
         # ── Metric update from background thread ───────────────────
         if error_info.get("__type__") == "metric_update":
-            def color_val(val, warn=70, crit=90):
+            def color_val(val, warn=75, crit=90):
                 if val >= crit: return RED
                 if val >= warn: return ORANGE
                 return GREEN
 
-            cpu  = error_info.get("cpu",  0)
-            ram  = error_info.get("ram",  0)
-            disk = error_info.get("disk", 0)
-            net_ok    = error_info.get("net_ok", True)
-            uptime_m  = error_info.get("uptime_m", 0)
+            cpu = error_info.get("cpu", 0)
+            cores = error_info.get("cores", 1)
+            ram_pct = error_info.get("ram_pct", 0)
+            ram_used = error_info.get("ram_used_gb", 0)
+            ram_total = error_info.get("ram_total_gb", 0)
+            disk_pct = error_info.get("disk_pct", 0)
+            disk_free = error_info.get("disk_free_gb", 0)
+            svcs_running = error_info.get("svcs_running", 0)
+            svcs_total = error_info.get("svcs_total", 5)
+            net_ok = error_info.get("net_ok", True)
+            uptime_str = error_info.get("uptime_str", "0m")
 
-            self.health_widgets["cpu"].setText(f"{cpu:.1f}%")
+            # CPU
+            self.health_widgets["cpu"].setText(f"{cpu:.1f}%  ({cores} cores)")
             self.health_widgets["cpu"].setStyleSheet(
                 f"color: {color_val(cpu)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
 
-            self.health_widgets["ram"].setText(f"{ram:.1f}%")
+            # Memory
+            self.health_widgets["ram"].setText(f"{ram_pct:.1f}%  ({ram_used:.1f} / {ram_total:.1f} GB)")
             self.health_widgets["ram"].setStyleSheet(
-                f"color: {color_val(ram)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+                f"color: {color_val(ram_pct)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
 
-            self.health_widgets["disk"].setText(f"{disk:.1f}%")
+            # Disk
+            self.health_widgets["disk"].setText(f"{disk_pct:.1f}%  ({disk_free:.1f} GB free)")
             self.health_widgets["disk"].setStyleSheet(
-                f"color: {color_val(disk)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+                f"color: {color_val(disk_pct)}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
 
-            net_txt = "Connected" if net_ok else "No Internet"
+            # Network
+            net_txt = "Online (Connected)" if net_ok else "No Internet"
             net_col = GREEN if net_ok else RED
             self.health_widgets["net"].setText(net_txt)
             self.health_widgets["net"].setStyleSheet(
                 f"color: {net_col}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
 
-            hrs = uptime_m // 60
-            mins = uptime_m % 60
-            uptime_str = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+            # Critical Services
+            if svcs_running == svcs_total:
+                svc_txt = f"All {svcs_total} Running (Healthy)"
+                svc_col = GREEN
+            else:
+                svc_txt = f"{svcs_running}/{svcs_total} Running (Degraded)"
+                svc_col = ORANGE
+            self.health_widgets["svc"].setText(svc_txt)
+            self.health_widgets["svc"].setStyleSheet(
+                f"color: {svc_col}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
+
             self.card_uptime.set_value(uptime_str)
             self.card_monitored.set_value(str(len(CATALOG_LIST)))
-            self.last_scan_lbl.setText(f"Updated {datetime.now().strftime('%H:%M:%S')}")
+            self.last_scan_lbl.setText(f"● Live · {datetime.now().strftime('%H:%M:%S')}")
+            self.last_scan_lbl.setStyleSheet(f"color: {GREEN}; font-size: 11px; font-weight: 600; background: {BG_CARD}; border: 1px solid {BORDER}; border-radius: 6px; padding: 4px 12px;")
             return
 
         # ── Lab Monitor signals ───────────────────────────────────────────────
@@ -1944,22 +1950,6 @@ class MainWindow(QMainWindow):
             self.net_btn.setText("Run Network Diagnostics")
             self.net_btn.setEnabled(True)
             self.net_log.append(f"\nError: {error_info.get('err')}")
-            return
-            
-        if sig_type == "rep_done":
-            path = error_info.get("path")
-            self.rep_btn.setText("Generate HTML Report")
-            self.rep_btn.setEnabled(True)
-            self.rep_log.append(f"\nReport saved to: {path}")
-            self.rep_log.append("Opening report in browser...")
-            import webbrowser
-            webbrowser.open(path)
-            return
-            
-        if sig_type == "rep_err":
-            self.rep_btn.setText("Generate HTML Report")
-            self.rep_btn.setEnabled(True)
-            self.rep_log.append(f"\nError generating report: {error_info.get('err')}")
             return
 
         self._alert_count += 1

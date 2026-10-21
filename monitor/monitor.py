@@ -300,10 +300,62 @@ $result | ConvertTo-Json -Compress
                             ctx["top_memory_process"] = f"{top_mem_proc[0]} ({top_mem_proc[2]}MB)"
                         self._trigger_alert(err, ctx)
 
+                # Check for temp files & cache clutter
+                self._check_temp_clutter()
+
             except Exception as ex:
                 logger.error(f"Metric monitor error: {ex}")
 
             time.sleep(self.check_interval)
+
+    def _check_temp_clutter(self):
+        """Check for excessive temp files and caches."""
+        try:
+            import os
+            temp_dirs = [
+                os.environ.get("TEMP", ""),
+                os.path.join(os.environ.get("LOCALAPPDATA", ""), "Temp"),
+                os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "Temp"),
+            ]
+            total_bytes = 0
+            file_count = 0
+            seen_dirs = set()
+            for td in temp_dirs:
+                if not td or not os.path.isdir(td) or td.lower() in seen_dirs:
+                    continue
+                seen_dirs.add(td.lower())
+                try:
+                    with os.scandir(td) as it:
+                        for entry in it:
+                            try:
+                                if entry.is_file(follow_symlinks=False):
+                                    total_bytes += entry.stat().st_size
+                                    file_count += 1
+                                elif entry.is_dir(follow_symlinks=False):
+                                    try:
+                                        with os.scandir(entry.path) as sub_it:
+                                            for sub in sub_it:
+                                                if sub.is_file(follow_symlinks=False):
+                                                    total_bytes += sub.stat().st_size
+                                                    file_count += 1
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+            size_mb = total_bytes / (1024 * 1024)
+            # Alert if temp size >= 500 MB or file count >= 1200
+            if size_mb >= 500 or file_count >= 1200:
+                err_def = ERROR_CATALOG.get("temp_files_overflow")
+                if err_def:
+                    self._trigger_alert(err_def, {
+                        "temp_size_mb": round(size_mb, 1),
+                        "file_count": file_count,
+                    })
+        except Exception as ex:
+            logger.debug(f"Temp clutter check error: {ex}")
 
     
     
