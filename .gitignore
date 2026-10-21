@@ -19,9 +19,7 @@ ENV/
 
 # Build outputs
 build/
-dist/*
-!dist/installer/
-!dist/installer/SmartFix_Setup.exe
+dist/
 *.spec
 
 # Database / runtime data
