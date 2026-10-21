@@ -1154,35 +1154,35 @@ ERROR_CATALOG: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# ── Major College Computer Lab Errors ────────────────────────
-COLLEGE_LAB_ERRORS = {
+# ── PC Lab / Shared Workstation Errors ────────────────────────
+PC_LAB_ERRORS = {
     "lab_usb_storage_blocked": {
         "id": "lab_usb_storage_blocked", "name": "USB Flash Drive Blocked / Write-Protected",
-        "severity": HIGH, "category": "College Lab",
-        "description": "Student USB storage drive is not recognized, write-protected, or blocked by Windows policy.",
+        "severity": HIGH, "category": "PC Lab",
+        "description": "USB storage drive is not recognized, write-protected, or blocked by Windows policy.",
         "technical": "USBSTOR service disabled (Start=4) or StorageDevicePolicies WriteProtect=1",
         "detection": {"type": "service", "service_name": "USBSTOR", "expected_status": "running"},
         "repair_id": "lab_fix_usb_storage", "user_permission_required": True,
     },
     "lab_taskmgr_cmd_regedit_disabled": {
         "id": "lab_taskmgr_cmd_regedit_disabled", "name": "Task Manager & CMD Locked by Policy",
-        "severity": CRITICAL, "category": "College Lab",
-        "description": "Task Manager, Command Prompt, or Registry Editor has been disabled by a policy or student prank.",
+        "severity": CRITICAL, "category": "PC Lab",
+        "description": "Task Manager, Command Prompt, or Registry Editor has been disabled by a Group Policy or registry restriction.",
         "technical": "Policies\\System DisableTaskMgr=1 or DisableCMD=1",
         "detection": {"type": "manual"},
         "repair_id": "lab_unlock_taskmgr_cmd", "user_permission_required": True,
     },
     "lab_proxy_stuck_offline": {
-        "id": "lab_proxy_stuck_offline", "name": "College Proxy Refusing Connections",
-        "severity": HIGH, "category": "College Lab",
-        "description": "Internet is blocked because an old college proxy server or PAC script is configured in Windows.",
+        "id": "lab_proxy_stuck_offline", "name": "Proxy Server Blocking Network Access",
+        "severity": HIGH, "category": "PC Lab",
+        "description": "Internet is blocked because a stale proxy server or PAC script is still configured in Windows network settings.",
         "technical": "WinINET ProxyEnable=1 or WinHTTP proxy server unreachable",
         "detection": {"type": "manual"},
         "repair_id": "lab_reset_proxy_settings", "user_permission_required": True,
     },
     "lab_xampp_port80_conflict": {
         "id": "lab_xampp_port80_conflict", "name": "XAMPP / Apache Port 80 Conflict",
-        "severity": HIGH, "category": "College Lab",
+        "severity": HIGH, "category": "PC Lab",
         "description": "Apache web server cannot start because Windows IIS (W3SVC) or BranchCache is locking Port 80.",
         "technical": "Port 80/443 bound by PID 4 (System) / W3SVC — Apache start failure",
         "detection": {"type": "manual"},
@@ -1190,7 +1190,7 @@ COLLEGE_LAB_ERRORS = {
     },
     "lab_mysql_port3306_locked": {
         "id": "lab_mysql_port3306_locked", "name": "MySQL / MariaDB Port 3306 Locked",
-        "severity": HIGH, "category": "College Lab",
+        "severity": HIGH, "category": "PC Lab",
         "description": "Database server cannot start because a crashed or ghost mysqld instance is locking port 3306.",
         "technical": "Port 3306 in use by orphan mysqld.exe process",
         "detection": {"type": "manual"},
@@ -1198,47 +1198,47 @@ COLLEGE_LAB_ERRORS = {
     },
     "lab_compiler_path_missing": {
         "id": "lab_compiler_path_missing", "name": "Compiler / Dev PATH Missing (Python/GCC/Java/Node)",
-        "severity": HIGH, "category": "College Lab",
-        "description": "Compilers or programming runtimes (python, gcc, javac, node) are missing from the command prompt PATH.",
+        "severity": HIGH, "category": "PC Lab",
+        "description": "Compilers or programming runtimes (python, gcc, javac, node) are missing from the system PATH — commands fail in terminal.",
         "technical": "Command not recognized: System PATH missing compiler binary directories",
         "detection": {"type": "manual"},
         "repair_id": "lab_restore_compiler_paths", "user_permission_required": True,
     },
     "lab_ssl_clock_drift": {
-        "id": "lab_ssl_clock_drift", "name": "HTTPS SSL Date/Time Clock Desync",
-        "severity": HIGH, "category": "College Lab",
-        "description": "Websites and college portals show NET::ERR_CERT_DATE_INVALID due to system CMOS clock drift.",
+        "id": "lab_ssl_clock_drift", "name": "HTTPS SSL Certificate Error — Clock Desync",
+        "severity": HIGH, "category": "PC Lab",
+        "description": "Browsers show NET::ERR_CERT_DATE_INVALID because the system CMOS clock has drifted out of sync with NTP servers.",
         "technical": "System time drift > 300s causing TLS/SSL handshake & Kerberos failures",
         "detection": {"type": "manual"},
         "repair_id": "lab_resync_clock_ntp", "user_permission_required": True,
     },
     "lab_disk_full_student_temps": {
-        "id": "lab_disk_full_student_temps", "name": "Disk Exhaustion from Student Temp Files",
-        "severity": HIGH, "category": "College Lab",
-        "description": "C: drive is out of space due to accumulated student build artifacts, temp files, and download caches.",
+        "id": "lab_disk_full_student_temps", "name": "Disk Full — Accumulated Temp & Cache Files",
+        "severity": HIGH, "category": "PC Lab",
+        "description": "C: drive is critically low on space due to accumulated build artifacts, temp files, and download caches.",
         "technical": "Temp and cache directories consuming critical drive space",
         "detection": {"type": "manual"},
         "repair_id": "lab_purge_student_temp_files", "user_permission_required": True,
     },
     "lab_display_projector_blackscreen": {
-        "id": "lab_display_projector_blackscreen", "name": "Projector Black Screen / Display Stuck",
-        "severity": HIGH, "category": "College Lab",
-        "description": "Monitor displays black screen or distorted resolution after unplugging lab projector.",
+        "id": "lab_display_projector_blackscreen", "name": "External Display / Projector Black Screen",
+        "severity": HIGH, "category": "PC Lab",
+        "description": "Monitor shows black screen or distorted resolution after connecting or disconnecting a projector or external display.",
         "technical": "Windows Display topology stuck in external/extended projector mode",
         "detection": {"type": "manual"},
         "repair_id": "lab_reset_display_mode", "user_permission_required": True,
     },
     "lab_vs_code_lock_frozen": {
-        "id": "lab_vs_code_lock_frozen", "name": "VS Code / IDE Hung Process & Lockfile Error",
-        "severity": MEDIUM, "category": "College Lab",
-        "description": "VS Code or IDE fails to launch because orphan background worker processes hold file locks.",
+        "id": "lab_vs_code_lock_frozen", "name": "VS Code / IDE Frozen — Lockfile Conflict",
+        "severity": MEDIUM, "category": "PC Lab",
+        "description": "VS Code or IDE fails to launch because orphan background worker processes are holding file locks from a previous crash.",
         "technical": "Orphan Code.exe instances and stale workspaceStorage lockfiles",
         "detection": {"type": "manual"},
         "repair_id": "lab_fix_vscode_frozen", "user_permission_required": True,
     },
 }
 
-ERROR_CATALOG.update(COLLEGE_LAB_ERRORS)
+ERROR_CATALOG.update(PC_LAB_ERRORS)
 ERROR_CATALOG.update(DIFFICULT_ERRORS)
 
 

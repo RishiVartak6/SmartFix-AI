@@ -652,8 +652,10 @@ class AlertPopup(QDialog):
 
     def _fix(self):
         self._timer.stop()
-        self.hide()
         main_win = self.parent()
+        if main_win and hasattr(main_win, "_popup_visible"):
+            main_win._popup_visible = False
+        self.hide()
         if main_win and hasattr(main_win, "resolve_alert_from_popup"):
             main_win.resolve_alert_from_popup(self.error_info)
         else:
@@ -666,7 +668,17 @@ class AlertPopup(QDialog):
 
     def _ignore(self):
         self._timer.stop()
+        main_win = self.parent()
+        if main_win and hasattr(main_win, "_popup_visible"):
+            main_win._popup_visible = False
         self.close()
+
+    def closeEvent(self, event):
+        self._timer.stop()
+        main_win = self.parent()
+        if main_win and hasattr(main_win, "_popup_visible"):
+            main_win._popup_visible = False
+        super().closeEvent(event)
 
 
 
@@ -1318,8 +1330,8 @@ class MainWindow(QMainWindow):
         setup_layout.addWidget(setup_title)
 
         setup_desc = QLabel(
-            "Choose a role for this PC. The same SmartFix installer runs on every machine in the lab. "
-            "One PC becomes the Admin (teacher) and the rest are Clients (student PCs)."
+            "Choose a role for this PC. The same SmartFix installer runs on every machine in the network. "
+            "One PC becomes the Admin (Central Controller) and the rest are Clients (Managed Workstations)."
         )
         setup_desc.setStyleSheet(f"color: {TEXT2}; font-size: 12px; background: transparent; border: none;")
         setup_desc.setWordWrap(True)
@@ -1328,7 +1340,7 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(12)
 
-        self._btn_admin_mode = QPushButton("🎓  Set as Admin (Teacher PC)")
+        self._btn_admin_mode = QPushButton("🛡  Set as Admin (Central Controller)")
         self._btn_admin_mode.setStyleSheet(
             f"background: {ACCENT}; color: white; padding: 10px 20px; border: none; "
             f"border-radius: 8px; font-weight: bold; font-size: 13px;"
@@ -1337,7 +1349,7 @@ class MainWindow(QMainWindow):
         self._btn_admin_mode.clicked.connect(lambda: self._lab_set_admin_mode())
         btn_row.addWidget(self._btn_admin_mode)
 
-        self._btn_client_mode = QPushButton("💻  Set as Client (Student PC)")
+        self._btn_client_mode = QPushButton("💻  Set as Client (Managed Workstation)")
         self._btn_client_mode.setStyleSheet(
             f"background: {BG_CARD2}; color: {TEXT1}; padding: 10px 20px; border: 1px solid {BORDER}; "
             f"border-radius: 8px; font-weight: bold; font-size: 13px;"
@@ -1511,7 +1523,7 @@ class MainWindow(QMainWindow):
             )
 
     def _make_lab_client_card(self, client: ClientInfo) -> QFrame:
-        """Create a card widget for one student PC."""
+        """Create a card widget for one client PC."""
         online = client.online
         status_color = GREEN if online else TEXT3
         border_col   = f"{GREEN}50" if online else BORDER
@@ -1962,12 +1974,23 @@ class MainWindow(QMainWindow):
             self._lab_agent.update_errors(list(self._alerts))
 
         eid = error_info.get("id", "")
+        sev = error_info.get("severity", "")
+        is_demo = error_info.get("is_demo", False) or eid in DEMO_SCENARIOS
 
-        # Skip if this error is already showing in the Active Alerts list
-        if eid in self._active_alert_ids:
+        # If it is a demo, allow it to re-trigger even if previously in active alerts
+        if is_demo and eid in self._active_alert_ids:
+            for i in range(self.alerts_layout.count()):
+                w = self.alerts_layout.itemAt(i).widget()
+                if w and hasattr(w, "error_info") and w.error_info.get("id") == eid:
+                    w.setParent(None)
+                    break
+            self._active_alert_ids.discard(eid)
+            self._alert_count = max(0, self._alert_count - 1)
+        elif eid in self._active_alert_ids:
             self._alert_count = max(0, self._alert_count - 1)
             self.card_alerts.set_value(str(self._alert_count))
             return
+
         if eid:
             self._active_alert_ids.add(eid)
 
@@ -1975,13 +1998,18 @@ class MainWindow(QMainWindow):
         alert_item = AlertItem(error_info, self._fix_from_list, self._ignore_from_list)
         self.alerts_layout.insertWidget(0, alert_item)
 
-        # Show popup for CRITICAL, HIGH severity or DEMO scenarios (so all demo alerts are immediately visible)
-        sev = error_info.get("severity", "")
-        is_demo = error_info.get("is_demo", False) or eid in DEMO_SCENARIOS
-        if (is_demo or sev in ("CRITICAL", "HIGH")) and not self._popup_visible:
+        # Show popup toast for CRITICAL, HIGH severity or DEMO scenarios
+        if is_demo or sev in ("CRITICAL", "HIGH"):
+            # Close any previous popup toast so the new alert is immediately visible
+            for p in list(self._active_popups):
+                try:
+                    p.close()
+                except Exception:
+                    pass
+            self._active_popups.clear()
             self._popup_visible = True
+
             popup = AlertPopup(error_info, self)
-            popup.destroyed.connect(lambda: setattr(self, '_popup_visible', False))
             popup.show()
             self._active_popups.append(popup)
 
@@ -1999,6 +2027,10 @@ class MainWindow(QMainWindow):
             self._active_alert_ids.discard(eid)
             if self._monitor:
                 self._monitor.mark_resolved(eid, cooldown_seconds=3600)
+        # Clean up any active demo simulation (e.g. restore audio/services)
+        if self._demo:
+            self._demo.cleanup_active()
+
         if error_info.get("repair_id") == "unknown_error":
             dlg = AIAssistantDialog(error_info, self)
             dlg.exec()
@@ -2025,6 +2057,9 @@ class MainWindow(QMainWindow):
             # Tell the monitor this error is resolved — suppress re-alerting for 60 min
             if self._monitor:
                 self._monitor.mark_resolved(eid, cooldown_seconds=3600)
+        # Clean up any active demo simulation (e.g. restore audio/services)
+        if self._demo:
+            self._demo.cleanup_active()
         if error_info.get("repair_id") == "unknown_error":
             dlg = AIAssistantDialog(error_info, self)
             dlg.exec()
@@ -2061,8 +2096,13 @@ class MainWindow(QMainWindow):
             if w and w is not self.no_alerts_lbl:
                 w.setParent(None)
         self._alert_count = 0
+        self._active_alert_ids.clear()
+        if self._demo:
+            self._demo.cleanup_active()
         self.card_alerts.set_value("0")
         self.no_alerts_lbl.setVisible(True)
+        self.health_widgets["errors"].setText("None")
+        self.health_widgets["errors"].setStyleSheet(f"color: {GREEN}; font-size: 13px; font-weight: 600; background: transparent; border: none;")
 
     
 

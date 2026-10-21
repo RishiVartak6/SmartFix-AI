@@ -1490,7 +1490,7 @@ if (Test-Path $ngen) {
 """
     return _run_ps(script)
 
-# ── Major College Computer Lab Repairs ──────────────────────────
+# ── Major Workstation & Multi-PC Lab Repairs ──────────────────────────
 
 @repair("lab_fix_usb_storage")
 def lab_fix_usb_storage():
@@ -1521,7 +1521,7 @@ Write-Output "Task Manager, Command Prompt, and Registry Editor are now fully un
 @repair("lab_reset_proxy_settings")
 def lab_reset_proxy_settings():
     script = """
-Write-Output "Resetting stale college proxy and reverting to direct network..."
+Write-Output "Resetting stale proxy and reverting to direct network..."
 Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" -Name "ProxyEnable" -Value 0 -Type DWord -ErrorAction SilentlyContinue
 Set-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" -Name "ProxyServer" -Value "" -ErrorAction SilentlyContinue
 Remove-ItemProperty -Path "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" -Name "AutoConfigURL" -ErrorAction SilentlyContinue
@@ -1630,7 +1630,7 @@ Write-Output "Clock resynced: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'). HTTPS S
 @repair("lab_purge_student_temp_files")
 def lab_purge_student_temp_files():
     script = """
-Write-Output "Purging student temp files, crash dumps, and Windows caches..."
+Write-Output "Purging temporary files, crash dumps, and Windows caches..."
 $initialSpace = [Math]::Round((Get-PSDrive C).Free / 1GB, 2)
 Get-ChildItem -Path "$env:LOCALAPPDATA\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 Get-ChildItem -Path "$env:SystemRoot\\Temp\\*" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue

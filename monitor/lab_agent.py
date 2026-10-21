@@ -1,6 +1,6 @@
 """
 SmartFix AI — Lab Client Agent
-Runs on every student PC. Listens on LAB_PORT for admin commands,
+Runs on every client workstation. Listens on LAB_PORT for admin commands,
 reports errors / metrics, and executes repairs on request.
 """
 import json
@@ -34,7 +34,7 @@ BROADCAST_INTERVAL = 15   # seconds between broadcasts
 
 class LabClientAgent:
     """
-    TCP server that runs on the student PC.
+    TCP server that runs on the client workstation.
     - Broadcasts its presence on the LAN via UDP every BROADCAST_INTERVAL seconds.
     - Accepts TCP connections from the admin and responds to commands.
     - Tracks locally detected errors (fed from BackgroundMonitor).
