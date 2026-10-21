@@ -31,6 +31,7 @@ from PyQt6.QtGui import (
     QColor, QFont, QIcon, QPainter, QPen, QBrush,
     QPixmap, QLinearGradient, QPalette, QAction, QFontDatabase
 )
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
 
 from monitor.error_catalog import ERROR_CATALOG, CATALOG_LIST
@@ -687,8 +688,9 @@ class AlertPopup(QDialog):
 class MainWindow(QMainWindow):
     _alert_signal = pyqtSignal(dict)
 
-    def __init__(self):
+    def __init__(self, is_background: bool = False):
         super().__init__()
+        self.is_background = is_background
         self.setWindowTitle("SmartFix AI — Windows Error Monitor")
         self.setMinimumSize(1100, 700)
         self.setStyleSheet(STYLESHEET)
@@ -717,6 +719,36 @@ class MainWindow(QMainWindow):
         self._start_monitor()
         self._start_metric_timer()
         self._start_lab_services()
+
+        # Single-instance server: wake up when user launches app again
+        try:
+            self._single_instance_server = QLocalServer(self)
+            self._single_instance_server.removeServer("SmartFixAI_SingleInstance")
+            self._single_instance_server.listen("SmartFixAI_SingleInstance")
+            self._single_instance_server.newConnection.connect(self._on_single_instance_ping)
+        except Exception as e:
+            logger.debug(f"Single-instance server error: {e}")
+
+        # Ensure auto-start on PC boot is registered in background
+        threading.Thread(target=ensure_windows_autostart, daemon=True).start()
+
+    def _on_single_instance_ping(self):
+        """Called when a second instance tries to launch — bring this window to foreground."""
+        try:
+            sock = self._single_instance_server.nextPendingConnection()
+            if sock:
+                def _read_and_show():
+                    try:
+                        data = sock.readAll().data().decode("utf-8", errors="ignore")
+                        if "SHOW" in data or not data.strip():
+                            self.show_and_raise()
+                    except Exception:
+                        self.show_and_raise()
+                    sock.disconnectFromServer()
+                sock.readyRead.connect(_read_and_show)
+                QTimer.singleShot(400, self.show_and_raise)
+        except Exception as e:
+            logger.debug(f"Error handling single-instance ping: {e}")
 
     
 
@@ -1997,6 +2029,13 @@ class MainWindow(QMainWindow):
             self.tray.setContextMenu(tray_menu)
             self.tray.activated.connect(self._tray_activated)
             self.tray.show()
+            if getattr(self, "is_background", False):
+                self.tray.showMessage(
+                    "SmartFix AI",
+                    "SmartFix AI is active and monitoring in the background.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000
+                )
         except Exception as e:
             logger.error(f"Tray setup failed: {e}")
 
@@ -2403,15 +2442,104 @@ def _is_admin() -> bool:
     try:
         import ctypes
         return ctypes.windll.shell32.IsUserAnAdmin() != 0
-    except:
+    except Exception:
         return False
 
 
+def ensure_windows_autostart():
+    """Register SmartFix AI to run silently in background whenever the PC boots.
+    Uses Task Scheduler (highest privileges, no UAC prompts at boot), HKCU Run key,
+    and the Windows Startup folder as multi-layered redundancy.
+    """
+    try:
+        exe_path = os.path.join(ROOT, "SmartFix AI.exe")
+        if not os.path.exists(exe_path):
+            exe_path = sys.executable
+
+        # 1. Windows Task Scheduler: ONLOGON with HIGHEST privileges
+        try:
+            tr_cmd = f'"{exe_path}" --background'
+            subprocess.run(
+                [
+                    "schtasks.exe", "/Create",
+                    "/TN", "SmartFix AI Autostart",
+                    "/TR", tr_cmd,
+                    "/SC", "ONLOGON",
+                    "/RL", "HIGHEST",
+                    "/F"
+                ],
+                capture_output=True,
+                creationflags=0x08000000  # CREATE_NO_WINDOW
+            )
+        except Exception as e:
+            logger.debug(f"Task Scheduler setup note: {e}")
+
+        # 2. Registry HKCU Run Key (works without elevation)
+        try:
+            import winreg
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                0, winreg.KEY_SET_VALUE
+            ) as key:
+                winreg.SetValueEx(key, "SmartFix AI", 0, winreg.REG_SZ, f'"{exe_path}" --background')
+        except Exception as e:
+            logger.debug(f"HKCU Run key setup note: {e}")
+
+        # 3. Startup Folder Shortcut fallback
+        try:
+            startup_dir = os.path.join(
+                os.environ.get("APPDATA", ""),
+                r"Microsoft\Windows\Start Menu\Programs\Startup"
+            )
+            if os.path.isdir(startup_dir):
+                lnk_path = os.path.join(startup_dir, "SmartFix AI.lnk")
+                ps_script = (
+                    f'$WshShell = New-Object -ComObject WScript.Shell; '
+                    f'$Shortcut = $WshShell.CreateShortcut("{lnk_path}"); '
+                    f'$Shortcut.TargetPath = "{exe_path}"; '
+                    f'$Shortcut.Arguments = "--background"; '
+                    f'$Shortcut.WorkingDirectory = "{ROOT}"; '
+                    f'$Shortcut.Description = "SmartFix AI Background Monitor"; '
+                    f'$Shortcut.Save()'
+                )
+                subprocess.run(
+                    ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+                    capture_output=True,
+                    creationflags=0x08000000
+                )
+        except Exception as e:
+            logger.debug(f"Startup folder shortcut setup note: {e}")
+
+    except Exception as e:
+        logger.warning(f"ensure_windows_autostart failed: {e}")
+
+
 def main():
-    # SmartFix AI.exe already has requireAdministrator UAC manifest,
-    # so by the time we reach here Python is already elevated.
-    # We do NOT attempt to re-launch — that was causing a hidden second process.
-    # If run directly without the launcher and not admin, show a clear message.
+    # 1. Detect if started in background / autostart mode on PC boot
+    is_background = any(
+        arg.lower() in ("--background", "--minimized", "--tray", "--autostart")
+        for arg in sys.argv
+    )
+
+    app = QApplication(sys.argv)
+    app.setApplicationName("SmartFix AI")
+    app.setOrganizationName("SmartFix")
+    app.setQuitOnLastWindowClosed(False)
+
+    # 2. Single-Instance Check via QLocalSocket:
+    # If app is already running in background (e.g. from boot) and user double-clicks
+    # the desktop shortcut, signal the running instance to show its window and exit cleanly.
+    probe = QLocalSocket()
+    probe.connectToServer("SmartFixAI_SingleInstance")
+    if probe.waitForConnected(400):
+        if not is_background:
+            probe.write(b"SHOW\n")
+            probe.waitForBytesWritten(1000)
+        probe.disconnectFromServer()
+        sys.exit(0)
+
+    # 3. Verify admin elevation
     if not _is_admin():
         try:
             import ctypes
@@ -2426,43 +2554,38 @@ def main():
             pass
         sys.exit(1)
 
-    app = QApplication(sys.argv)
-    app.setApplicationName("SmartFix AI")
-    app.setOrganizationName("SmartFix")
-    app.setQuitOnLastWindowClosed(False)
-
     try:
         QFontDatabase.addApplicationFont("C:\\Windows\\Fonts\\segoeui.ttf")
         app.setFont(QFont("Segoe UI", 10))
     except Exception:
         pass
 
-    window = MainWindow()
+    window = MainWindow(is_background=is_background)
 
-    # Force window visible immediately
-    window.showNormal()
-    window.raise_()
-    window.activateWindow()
-
-    # Also schedule a deferred show 500ms after the event loop starts —
-    # this is the only reliable way to force foreground on Windows when
-    # launched from an elevated UAC process.
-    def _deferred_show():
+    if is_background:
+        # Run silently in background / system tray on PC boot
+        window.hide()
+    else:
+        # User explicitly launched app — show and bring to foreground
         window.showNormal()
         window.raise_()
         window.activateWindow()
-        try:
-            import ctypes
-            hwnd = int(window.winId())
-            # SW_SHOW = 5, SW_RESTORE = 9
-            ctypes.windll.user32.ShowWindow(hwnd, 5)
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-            # Allow SetForegroundWindow to work even when another app is in foreground
-            ctypes.windll.user32.AllowSetForegroundWindow(-1)
-        except Exception:
-            pass
 
-    QTimer.singleShot(500, _deferred_show)
+        # Also schedule a deferred show 500ms after event loop starts
+        def _deferred_show():
+            window.showNormal()
+            window.raise_()
+            window.activateWindow()
+            try:
+                import ctypes
+                hwnd = int(window.winId())
+                ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                ctypes.windll.user32.AllowSetForegroundWindow(-1)
+            except Exception:
+                pass
+
+        QTimer.singleShot(500, _deferred_show)
 
     sys.exit(app.exec())
 

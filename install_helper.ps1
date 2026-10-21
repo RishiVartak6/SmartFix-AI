@@ -240,13 +240,42 @@ foreach ($r in $fwRules) {
     } catch { Write-Log "  WARNING: Firewall rule failed: $($r.Name) — $_" }
 }
 
-# STEP 9: Register auto-start
-Write-Log "--- STEP 9: Auto-start ---"
+# STEP 9: Register background auto-start on PC boot
+Write-Log "--- STEP 9: Background Auto-start on Boot ---"
+$appExe = "$InstallDir\SmartFix AI.exe"
+
+# 9A: Elevated Windows Task Scheduler task (Runs silently with highest privileges at logon, no UAC prompts)
+try {
+    $schCmd = "schtasks.exe /Create /TN `"SmartFix AI Autostart`" /TR `"\`"$appExe\`" --background`" /SC ONLOGON /RL HIGHEST /F"
+    Invoke-Expression $schCmd | Out-Null
+    Write-Log "  Task Scheduler autostart registered (ONLOGON /RL HIGHEST)."
+} catch {
+    Write-Log "  WARNING: Task Scheduler registration failed: $_"
+}
+
+# 9B: Registry HKLM Run key (Fallback)
 try {
     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" `
-        -Name "SmartFix AI" -Value "`"$InstallDir\SmartFix AI.exe`""
-    Write-Log "  Auto-start registered."
-} catch { Write-Log "  WARNING: Auto-start registration failed: $_" }
+        -Name "SmartFix AI" -Value "`"$appExe`" --background" -Force
+    Write-Log "  HKLM Run key registered."
+} catch {
+    Write-Log "  WARNING: HKLM registration failed: $_"
+}
+
+# 9C: Startup folder shortcut (User fallback)
+try {
+    $startupLnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\SmartFix AI.lnk"
+    $WshShell = New-Object -ComObject WScript.Shell
+    $Shortcut = $WshShell.CreateShortcut($startupLnk)
+    $Shortcut.TargetPath = $appExe
+    $Shortcut.Arguments = "--background"
+    $Shortcut.WorkingDirectory = $InstallDir
+    $Shortcut.Description = "SmartFix AI Background Monitor"
+    $Shortcut.Save()
+    Write-Log "  Startup folder shortcut created."
+} catch {
+    Write-Log "  WARNING: Startup folder shortcut failed: $_"
+}
 
 Write-Log "=== SmartFix AI installation complete! Log: $LogFile ==="
 exit 0

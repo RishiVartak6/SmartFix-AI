@@ -76,8 +76,8 @@ Name: "{group}\Uninstall {#MyAppName}";  Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}";      Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-; Auto-start with Windows (set by install_helper.ps1 but also added here as fallback)
-Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "SmartFix AI"; ValueData: """{app}\{#MyAppExeName}"""; Flags: uninsdeletevalue; Tasks: startupicon
+; Auto-start with Windows in background (also registered via schtasks in install_helper.ps1)
+Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "SmartFix AI"; ValueData: """{app}\{#MyAppExeName}"" --background"; Flags: uninsdeletevalue; Tasks: startupicon
 
 [Run]
 ; ── Main dependency installer (Python + packages + Ollama + llama3 + firewall) ──
@@ -94,7 +94,7 @@ Filename: "{app}\{#MyAppExeName}"; \
 
 [UninstallRun]
 Filename: "powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SmartFix AI' -ErrorAction SilentlyContinue; Remove-NetFirewallRule -DisplayName 'SmartFix-Lab-*' -ErrorAction SilentlyContinue"""; \
+    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""schtasks /Delete /TN 'SmartFix AI Autostart' /F -ErrorAction SilentlyContinue; Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SmartFix AI' -ErrorAction SilentlyContinue; Remove-Item -Path '$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\SmartFix AI.lnk' -ErrorAction SilentlyContinue; Remove-NetFirewallRule -DisplayName 'SmartFix-Lab-*' -ErrorAction SilentlyContinue"""; \
     Flags: runhidden
 
 [UninstallDelete]
