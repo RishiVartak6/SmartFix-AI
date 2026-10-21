@@ -2105,39 +2105,62 @@ def _is_admin() -> bool:
         return False
 
 
-def _relaunch_as_admin():
-    import ctypes
-    script = os.path.abspath(sys.argv[0])
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
-    sys.exit(0)
-
-
-
 def main():
+    # SmartFix AI.exe already has requireAdministrator UAC manifest,
+    # so by the time we reach here Python is already elevated.
+    # We do NOT attempt to re-launch — that was causing a hidden second process.
+    # If run directly without the launcher and not admin, show a clear message.
     if not _is_admin():
-        _relaunch_as_admin()
-        return
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "SmartFix AI requires administrator privileges.\n\n"
+                "Please launch via 'SmartFix AI.exe' (double-click the desktop shortcut).",
+                "SmartFix AI — Elevation Required",
+                0x10  # MB_ICONERROR
+            )
+        except Exception:
+            pass
+        sys.exit(1)
 
     app = QApplication(sys.argv)
     app.setApplicationName("SmartFix AI")
     app.setOrganizationName("SmartFix")
-    app.setQuitOnLastWindowClosed(False)  
+    app.setQuitOnLastWindowClosed(False)
 
-    
-    QFontDatabase.addApplicationFont("C:\\Windows\\Fonts\\segoeui.ttf")
-    app.setFont(QFont("Segoe UI", 10))
+    try:
+        QFontDatabase.addApplicationFont("C:\\Windows\\Fonts\\segoeui.ttf")
+        app.setFont(QFont("Segoe UI", 10))
+    except Exception:
+        pass
 
     window = MainWindow()
+
+    # Force window visible immediately
     window.showNormal()
     window.raise_()
     window.activateWindow()
-    try:
-        import ctypes
-        hwnd = int(window.winId())
-        ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-        ctypes.windll.user32.SetForegroundWindow(hwnd)
-    except Exception:
-        pass
+
+    # Also schedule a deferred show 500ms after the event loop starts —
+    # this is the only reliable way to force foreground on Windows when
+    # launched from an elevated UAC process.
+    def _deferred_show():
+        window.showNormal()
+        window.raise_()
+        window.activateWindow()
+        try:
+            import ctypes
+            hwnd = int(window.winId())
+            # SW_SHOW = 5, SW_RESTORE = 9
+            ctypes.windll.user32.ShowWindow(hwnd, 5)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            # Allow SetForegroundWindow to work even when another app is in foreground
+            ctypes.windll.user32.AllowSetForegroundWindow(-1)
+        except Exception:
+            pass
+
+    QTimer.singleShot(500, _deferred_show)
 
     sys.exit(app.exec())
 
